@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>TaxCLI</title>
+    <link rel="icon" type="image/png" href="logo-icon.png" />
+    <link rel="stylesheet" href="../node_modules/@fortawesome/fontawesome-free/css/all.min.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-mark" aria-hidden="true"><img src="logo-icon.png" alt="" width="27" height="27" /></span><span>TaxCLI</span><button class="icon-button" aria-label="Menü"><i class="fa-solid fa-chevron-down"></i></button></div>
+        <button class="new-task" id="newTask"><i class="fa-solid fa-plus"></i> Yeni görev <kbd>Ctrl N</kbd></button>
+        <nav class="primary-nav">
+          <button class="nav-item active" data-view="workspace"><i class="fa-solid fa-layer-group"></i> Çalışma alanı</button>
+          <button class="nav-item" data-view="plugins"><i class="fa-solid fa-puzzle-piece"></i> Eklentiler</button>
+          <button class="nav-item" data-view="connections"><i class="fa-solid fa-plug"></i> Bağlantılar</button>
+          <button class="nav-item" data-view="userSettings"><i class="fa-solid fa-gear"></i> Ayarlar</button>
+        </nav>
+        <input type="hidden" id="projectPath" value="" />
+        <div class="section-label"><span>PROJELER</span><button id="addProject" aria-label="Proje ekle"><i class="fa-solid fa-plus"></i></button></div>
+        <div class="project-list" id="projectList">
+          <button class="project active"><i class="fa-regular fa-folder folder-icon"></i><span><strong>Başlangıç projesi</strong><small>Henüz klasör seçilmedi</small></span></button>
+        </div>
+        <div class="creator-credit">Created by <strong>Taxperia</strong></div>
+        <div class="profile-wrap"><div class="profile"><span class="avatar" id="profileAvatar">TA</span><span><strong id="profileName">Yerel kullanıcı</strong><small>Güvenli çalışma alanı</small></span><button class="icon-button" id="profileMenuButton" aria-label="Kullanıcı menüsü"><i class="fa-solid fa-ellipsis"></i></button></div><div class="popup-menu profile-menu" id="profileMenu"><button data-view-target="userSettings"><i class="fa-regular fa-user"></i> Kullanıcı ayarları</button><button data-view-target="connections"><i class="fa-solid fa-plug"></i> Bağlantılar</button><button id="clearHistory"><i class="fa-solid fa-trash-can"></i> Geçmişi temizle</button></div></div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="project-breadcrumb"><span class="status-dot"></span><span id="projectName">Başlangıç projesi</span><span class="muted">/</span><strong>Yeni görev</strong></div>
+          <div class="top-actions window-controls"><button class="window-button" id="minimizeWindow" aria-label="Küçült"><i class="fa-solid fa-minus"></i></button><button class="window-button" id="maximizeWindow" aria-label="Büyüt"><i class="fa-regular fa-square"></i></button><button class="window-button close" id="closeWindow" aria-label="Kapat"><i class="fa-solid fa-xmark"></i></button></div>
+        </header>
+
+        <section class="view active" id="workspaceView">
+          <div class="workspace-layout" id="workspaceLayout">
+            <div class="workspace-main" id="workspaceMain">
+              <div class="conversation" id="conversation"></div>
+              <div class="hero" id="hero">
+                <div class="orb"><span></span></div>
+                <p class="eyebrow">BİRLEŞİK AI ÇALIŞMA ALANI</p>
+                <h1>Bugün ne geliştirelim?</h1>
+                <p class="hero-copy tip-line" id="heroTip">Codex, OpenCode, Copilot, Cursor ve Gemini arasında geçiş yap. Bağlantılar'dan kurup hesabınla giriş yap.</p>
+              </div>
+
+              <div class="composer-wrap">
+                <div class="engine-strip" id="engineStrip"></div>
+                <div class="composer">
+                  <div class="context-chips" id="contextChips"></div>
+                  <div class="attachment-tray" id="attachmentTray"></div>
+                  <textarea id="prompt" placeholder="Bir görev tarif et; resim için + · yapıştır · sürükle-bırak…"></textarea>
+                  <div class="composer-footer">
+                    <div class="menu-anchor">
+                      <button class="tool-button" id="toolMenuButton" aria-label="Araç ekle"><i class="fa-solid fa-plus"></i></button>
+                      <div class="popup-menu tool-menu" id="toolMenu">
+                        <button id="addPlanModeTool"><i class="fa-regular fa-map"></i> Plan modu</button>
+                        <button id="addBrowserTool"><i class="fa-solid fa-globe"></i> Tarayıcı</button>
+                        <button id="addImageTool"><i class="fa-regular fa-image"></i> Resim ekle</button>
+                        <button id="openTerminalTool"><i class="fa-solid fa-terminal"></i> Terminal <small>Ctrl+`</small></button>
+                        <div id="toolPluginItems"></div>
+                      </div>
+                      <button class="mode-button" id="approvalButton"><i class="fa-solid fa-shield-halved"></i> <span id="approvalLabel">Her işlemde sor</span> <i class="fa-solid fa-chevron-down"></i></button>
+                      <div class="popup-menu approval-menu" id="approvalMenu">
+                        <button data-approval="ask" class="approval-option"><i class="fa-solid fa-hand"></i><span>Her işlemde sor<small>Riskli işlemlerde CLI onayını koru / en güvenli</small></span></button>
+                        <button data-approval="auto_edit" class="approval-option"><i class="fa-solid fa-bolt"></i><span>Düzenlemeleri onayla<small>Proje içi dosya yazımına otomatik izin</small></span></button>
+                        <button data-approval="plan" class="approval-option"><i class="fa-regular fa-eye"></i><span>Plan / yalnızca oku<small>Değişiklik yapmadan plan üret</small></span></button>
+                      </div>
+                    </div>
+                    <div class="composer-actions">
+                      <span class="run-status" id="runStatus"></span>
+                      <div class="model-anchor">
+                        <button class="model-button effort-button" id="effortButton">Efor · medium <i class="fa-solid fa-chevron-down"></i></button>
+                        <div class="model-dropdown effort-dropdown" id="effortDropdown"><div class="model-list" id="effortList"></div></div>
+                      </div>
+                      <div class="model-anchor">
+                        <button class="model-button" id="modelButton">Codex <i class="fa-solid fa-chevron-down"></i></button>
+                        <div class="model-dropdown" id="modelDropdown"><div class="model-search"><i class="fa-solid fa-magnifying-glass"></i><input id="modelSearch" placeholder="Model ara…" /></div><div class="model-list" id="modelList"></div></div>
+                      </div>
+                      <button class="send-button" id="sendButton" title="Gönder">↑</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="suggestions" id="suggestionsBar">
+                  <button data-prompt="Bu projeyi analiz et ve mimarisini açıkla">Projeyi analiz et</button>
+                  <button data-prompt="Mevcut değişiklikleri güvenlik açısından incele">Güvenlik incelemesi</button>
+                  <button data-prompt="Bu proje için test planı hazırla">Test planı oluştur</button>
+                </div>
+              </div>
+            </div>
+            <aside class="browser-pane" id="browserPane" hidden>
+              <header class="browser-pane-head">
+                <strong><i class="fa-solid fa-globe"></i> Ajan tarayıcısı <em class="browser-sandbox-tag">Sandbox</em></strong>
+                <span class="browser-pane-actions">
+                  <button type="button" id="openBrowserExternal" title="Sistem tarayıcısında aç (Cloudflare/giriş)"><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+                  <button type="button" id="closeBrowserPane" title="Kapat"><i class="fa-solid fa-xmark"></i></button>
+                </span>
+              </header>
+              <div class="browser-bar">
+                <button id="browserBack" aria-label="Geri"><i class="fa-solid fa-chevron-left"></i></button>
+                <button id="browserForward" aria-label="İleri"><i class="fa-solid fa-chevron-right"></i></button>
+                <button id="browserReload" aria-label="Yenile"><i class="fa-solid fa-rotate-right"></i></button>
+                <input id="browserUrl" value="https://www.google.com" />
+                <button id="browserGo">Git</button>
+              </div>
+              <webview id="agentBrowser" src="about:blank" partition="persist:agenthub-browser" allowpopups></webview>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view panel-view" id="pluginsView">
+          <div class="panel-heading"><div><p class="eyebrow">EXTENSIONS</p><h2>Eklentiler</h2><p>Çalışan bağlantıları kur; diğerleri yakında gelecek.</p></div></div>
+          <div class="plugin-grid" id="pluginGrid"></div>
+        </section>
+
+        <section class="view panel-view" id="browserView" hidden aria-hidden="true"></section>
+
+        <section class="view panel-view" id="connectionsView">
+          <div class="panel-heading"><div><p class="eyebrow">ENGINES</p><h2>Bağlantılar</h2><p>CLI kur, hesabınla giriş yap, sonra modelleri kullan.</p></div><button class="ghost-button" id="refreshEngines"><i class="fa-solid fa-rotate-right"></i> Yeniden tara</button></div>
+          <div class="connection-list" id="connectionList"></div>
+        </section>
+
+        <section class="view settings-view" id="userSettingsView">
+          <div class="settings-shell">
+            <aside class="settings-sidebar">
+              <button class="settings-back" id="settingsBack" type="button"><i class="fa-solid fa-arrow-left"></i> Uygulamaya geri dön</button>
+              <div class="settings-search"><i class="fa-solid fa-magnifying-glass"></i><input id="settingsSearch" placeholder="Ayarlarda ara..." /></div>
+              <nav class="settings-nav" id="settingsNav">
+                <p class="settings-nav-label">Kişisel</p>
+                <button class="active" data-settings-section="general"><i class="fa-solid fa-gear"></i> Genel</button>
+                <button data-settings-section="profile"><i class="fa-regular fa-circle-user"></i> Profil</button>
+                <button data-settings-section="appearance"><i class="fa-solid fa-circle-half-stroke"></i> Görünüm</button>
+                <button data-settings-section="projects"><i class="fa-regular fa-folder-open"></i> Projeler</button>
+                <button data-settings-section="usage"><i class="fa-regular fa-credit-card"></i> Kullanım ve plan</button>
+                <button data-settings-section="agents"><i class="fa-regular fa-paper-plane"></i> Yapılandırma</button>
+                <p class="settings-nav-label">Entegrasyonlar</p>
+                <button data-settings-section="plugins"><i class="fa-solid fa-puzzle-piece"></i> Eklentiler</button>
+                <button data-settings-section="browser"><i class="fa-solid fa-globe"></i> Tarayıcı</button>
+                <button data-settings-section="tools"><i class="fa-solid fa-desktop"></i> Araçlar ve MCP</button>
+                <p class="settings-nav-label">Kodlama</p>
+                <button data-settings-section="rules"><i class="fa-solid fa-book"></i> Kurallar ve Skills</button>
+                <button data-settings-section="models"><i class="fa-solid fa-cube"></i> Modeller</button>
+                <button data-settings-section="worktrees"><i class="fa-solid fa-code-branch"></i> Çalışma ağaçları</button>
+                <button data-settings-section="indexing"><i class="fa-solid fa-database"></i> İndeksleme</button>
+                <button data-settings-section="beta"><i class="fa-solid fa-flask"></i> Beta</button>
+              </nav>
+            </aside>
+            <div class="settings-content">
+              <div class="settings-content-inner">
+                <section class="settings-panel active" data-settings-panel="general">
+                  <header class="settings-panel-head"><h2>Genel</h2><p>Uygulama davranışı, bildirimler ve gizlilik</p></header>
+                  <div class="s-card s-card-row">
+                    <div class="s-card-icon"><i class="fa-solid fa-plug"></i></div>
+                    <div class="s-card-copy"><strong>TaxCLI bağlantıları</strong><small>CLI motorlarını kur, oturum aç ve anahtar yönet</small></div>
+                    <button class="s-btn" data-view-target="connections" type="button">Aç <i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+                  </div>
+                  <h3 class="s-section-title">Başlangıç</h3>
+                  <div class="s-stack">
+                    <label class="s-row"><span class="s-row-copy"><strong>İpuçları</strong><small>Boş ekranda dönen kullanım ipuçlarını göster</small></span><input type="checkbox" id="settingsTips" class="s-switch" /></label>
+                    <label class="s-row"><span class="s-row-copy"><strong>Pencere geri yükleme</strong><small>Açılışta son proje veya yeni pencere</small></span>
+                      <select id="settingsWindowRestore" class="s-select"><option value="default">Varsayılan</option><option value="last">Son proje</option><option value="none">Yeni pencere</option></select>
+                    </label>
+                  </div>
+                  <h3 class="s-section-title">Bildirimler</h3>
+                  <div class="s-stack">
+                    <label class="s-row"><span class="s-row-copy"><strong>Sistem bildirimleri</strong><small>Ajan tamamladığında veya ilgi gerektiğinde bildir</small></span><input type="checkbox" id="settingsSystemNotifications" class="s-switch" /></label>
+                    <label class="s-row"><span class="s-row-copy"><strong>Uyarı bildirimleri</strong><small>Uygulama içi uyarı toast’ları</small></span><input type="checkbox" id="settingsWarningNotifications" class="s-switch" /></label>
+                    <label class="s-row"><span class="s-row-copy"><strong>Sistem tepsisi</strong><small>TaxCLI’yi tepside göster</small></span><input type="checkbox" id="settingsTrayIcon" class="s-switch" /></label>
+                    <label class="s-row"><span class="s-row-copy"><strong>Tamamlama sesi</strong><small>Görev bitince kısa ses</small></span><input type="checkbox" id="settingsCompletionSound" class="s-switch" /></label>
+                  </div>
+                  <h3 class="s-section-title">Gizlilik</h3>
+                  <div class="s-stack">
+                    <label class="s-row"><span class="s-row-copy"><strong>Yerel gizlilik</strong><small>Sohbet geçmişini yalnızca bu cihazda sakla</small></span><input type="checkbox" id="settingsLocalHistory" class="s-switch" /></label>
+                  </div>
+                  <h3 class="s-section-title">Güncellemeler</h3>
+                  <div class="s-stack">
+                    <div class="s-row"><span class="s-row-copy"><strong>TaxCLI güncellemeleri</strong><small id="updateStatus">GitHub Releases üzerinden otomatik kontrol edilir</small></span><button class="s-btn" id="checkForUpdates" type="button">Kontrol et</button></div>
+                  </div>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="profile">
+                  <header class="settings-panel-head profile-head">
+                    <div><h2>Profil</h2><p>Kimlik ve yerel kullanım istatistikleri</p></div>
+                    <button class="s-btn primary" id="saveSettings" type="button">Kaydet</button>
+                  </header>
+                  <div class="profile-banner">
+                    <div class="profile-avatar-lg" id="profileAvatarLg">TA</div>
+                    <div class="profile-banner-meta">
+                      <strong class="settings-user-name" id="profileDisplayPreview">Yerel kullanıcı</strong>
+                      <span class="profile-handle" id="profileHandlePreview">@yerel</span>
+                      <span class="profile-plan-pill">Yerel plan · Free</span>
+                    </div>
+                  </div>
+                  <div class="s-stack" style="margin-top:14px">
+                    <label class="s-row field"><span class="s-row-copy"><strong>Görünen ad</strong></span><input id="settingsDisplayName" class="s-input" placeholder="Yerel kullanıcı" /></label>
+                    <label class="s-row field"><span class="s-row-copy"><strong>Baş harfler</strong></span><input id="settingsInitials" class="s-input narrow" maxlength="3" placeholder="TA" /></label>
+                  </div>
+                  <h3 class="s-section-title">İstatistikler</h3>
+                  <div class="stats-ribbon" id="profileStatsGrid"></div>
+                  <div class="s-stack" style="margin-top:14px">
+                    <div class="s-row"><span class="s-row-copy"><strong>Tahmini token</strong><small>Karakter/4 yaklaşık</small></span><strong id="profileTokenHint" class="s-value">0</strong></div>
+                    <div class="s-row"><span class="s-row-copy"><strong>Açılan projeler</strong></span><strong id="profileProjectHint" class="s-value">0</strong></div>
+                  </div>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="appearance">
+                  <header class="settings-panel-head"><h2>Görünüm</h2><p>Tema ve arayüz yoğunluğu</p></header>
+                  <div class="theme-grid" id="themeGrid">
+                    <button type="button" class="theme-card" data-theme="brand">
+                      <span class="theme-preview brand"></span>
+                      <strong>TaxCLI</strong>
+                      <small>Yeşil ana tema</small>
+                    </button>
+                    <button type="button" class="theme-card" data-theme="dark">
+                      <span class="theme-preview dark"></span>
+                      <strong>Koyu</strong>
+                      <small>Saf dark</small>
+                    </button>
+                    <button type="button" class="theme-card" data-theme="light">
+                      <span class="theme-preview light"></span>
+                      <strong>Açık</strong>
+                      <small>Light</small>
+                    </button>
+                    <button type="button" class="theme-card" data-theme="system">
+                      <span class="theme-preview system"></span>
+                      <strong>Sistem</strong>
+                      <small>OS ile eşle</small>
+                    </button>
+                  </div>
+                  <h3 class="s-section-title">Arayüz</h3>
+                  <div class="s-stack">
+                    <label class="s-row"><span class="s-row-copy"><strong>Kompakt sidebar</strong><small>Kenar çubuğunu sıkı göster</small></span><input type="checkbox" id="settingsCompactSidebar" class="s-switch" /></label>
+                  </div>
+                  <input type="hidden" id="settingsTheme" value="brand" />
+                  <p class="s-note">TaxCLI temasında ayarlar yeşil ana stili kullanır. Koyu modda ayarlar saf dark (mavi vurgu) tasarımına geçer.</p>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="projects">
+                  <header class="settings-panel-head"><h2>Projeler</h2><p>Çalışma alanı ve hafıza</p></header>
+                  <div class="s-stack">
+                    <label class="s-row"><span class="s-row-copy"><strong>Son projeyi geri yükle</strong><small>Açılışta son seçili klasör</small></span><input type="checkbox" id="settingsRestoreProject" class="s-switch" /></label>
+                    <label class="s-row"><span class="s-row-copy"><strong>Hafızayı otomatik oluştur</strong><small>Kapalıyken yalnızca sen istediğinde</small></span><input type="checkbox" id="settingsAutoMemory" class="s-switch" /></label>
+                  </div>
+                  <h3 class="s-section-title">Kayıtlı projeler</h3>
+                  <div class="settings-project-list" id="settingsProjectList"></div>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="usage">
+                  <header class="settings-panel-head profile-head">
+                    <div><h2>Kullanım ve plan</h2><p>Bu cihazda ölçülen aktivite</p></div>
+                    <span class="profile-plan-pill" id="usagePlanBadge">Active</span>
+                  </header>
+                  <div class="s-card s-card-row">
+                    <div class="s-card-copy"><strong id="usagePlanName">Yerel plan</strong><small>Ücretsiz · yerel ölçüm</small></div>
+                  </div>
+                  <div class="stats-ribbon" id="usageStatsGrid"></div>
+                  <h3 class="s-section-title">Detay</h3>
+                  <div class="s-stack">
+                    <div class="s-row"><span class="s-row-copy"><strong>Oturum süresi</strong><small>Birikimli açık süre</small></span><strong id="usageHours" class="s-value">0 sa</strong></div>
+                    <div class="s-row"><span class="s-row-copy"><strong>Açılan projeler</strong></span><strong id="usageProjects" class="s-value">0</strong></div>
+                    <div class="s-row"><span class="s-row-copy"><strong>Tahmini token</strong></span><strong id="usageTokens" class="s-value">0</strong></div>
+                    <div class="s-row"><span class="s-row-copy"><strong>Koşan ajanlar</strong></span><strong id="usageRuns" class="s-value">0</strong></div>
+                  </div>
+                  <button class="s-btn danger-outline" id="resetUsageStats" type="button">İstatistikleri sıfırla</button>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="agents">
+                  <header class="settings-panel-head"><h2>Yapılandırma</h2><p>Varsayılan ajan ve onay politikası</p></header>
+                  <div class="s-stack">
+                    <label class="s-row"><span class="s-row-copy"><strong>Varsayılan ajan</strong><small>Uygulama açılış motoru</small></span>
+                      <select id="settingsDefaultEngine" class="s-select"><option value="codex">Codex</option><option value="opencode">OpenCode</option><option value="cursor">Cursor Agent</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option><option value="nvidia">NVIDIA</option></select>
+                    </label>
+                    <label class="s-row"><span class="s-row-copy"><strong>Varsayılan onay</strong><small>Yeni oturumlar</small></span>
+                      <select id="settingsDefaultApproval" class="s-select"><option value="ask">Her işlemde sor</option><option value="auto_edit">Düzenlemeleri onayla</option><option value="plan">Plan / oku</option></select>
+                    </label>
+                    <label class="s-row"><span class="s-row-copy"><strong>Paralel proje koşuları</strong><small>Birden fazla projede ajan açık kalsın</small></span><input type="checkbox" id="settingsParallelRuns" class="s-switch" /></label>
+                  </div>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="models">
+                  <header class="settings-panel-head"><h2>Modeller</h2><p>Liste önbelleği ve vision uyarıları</p></header>
+                  <div class="s-stack">
+                    <div class="s-row"><span class="s-row-copy"><strong>Model önbelleği</strong><small>OpenCode / Cursor listesini yeniden çek</small></span><button class="s-btn" id="clearModelCache" type="button">Temizle</button></div>
+                    <label class="s-row"><span class="s-row-copy"><strong>Vision uyarıları</strong><small>Vision’suz modele resim eklenince uyar</small></span><input type="checkbox" id="settingsVisionWarnings" class="s-switch" checked /></label>
+                  </div>
+                  <div class="s-empty"><i class="fa-solid fa-cube"></i><p>Canlı modeller motor başına composer menüsünden yüklenir.</p><button class="s-btn" data-view-target="connections" type="button">Bağlantılar</button></div>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="worktrees">
+                  <header class="settings-panel-head"><h2>Çalışma ağaçları</h2><p>İzole git worktree görevleri</p></header>
+                  <div class="s-stack">
+                    <label class="s-row"><span class="s-row-copy"><strong>Worktree tabanlı görevler</strong><small>Cursor Agent destekliyorsa izole dal</small></span><input type="checkbox" id="settingsUseWorktrees" class="s-switch" /></label>
+                    <label class="s-row field"><span class="s-row-copy"><strong>Taban dal</strong></span><input type="text" id="settingsWorktreeBase" class="s-input narrow" placeholder="main" /></label>
+                  </div>
+                  <p class="s-note">Açıkken Cursor koşusunda worktree bayrağı denenir.</p>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="plugins">
+                  <header class="settings-panel-head"><h2>Eklentiler</h2><p>Eklentileri, becerileri ve bağlantıları yönet</p></header>
+                  <div class="s-tabs">
+                    <span class="s-tab active">Eklentiler</span>
+                    <span class="s-tab muted">MCP</span>
+                  </div>
+                  <div class="plugin-settings-list" id="settingsPluginsList"></div>
+                  <button class="s-btn" data-view-target="plugins" type="button" style="margin-top:14px">Eklentiler sayfası</button>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="rules">
+                  <header class="settings-panel-head profile-head">
+                    <div><h2>Kurallar ve Skills</h2><p>Her zaman eklenen talimatlar</p></div>
+                    <button class="s-btn primary" type="button" id="saveRulesSettings">Kaydet</button>
+                  </header>
+                  <div class="s-form">
+                    <label><span>Her zaman uygulanan kurallar</span><textarea id="settingsRulesText" rows="6" placeholder="Örn. Türkçe yanıt ver, mevcut stile uy..."></textarea></label>
+                    <label><span>Skills yolları (satır satır)</span><textarea id="settingsSkillsPaths" rows="3" placeholder=".cursor/skills&#10;~/.codex/skills"></textarea></label>
+                  </div>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="tools">
+                  <header class="settings-panel-head profile-head">
+                    <div><h2>Araçlar ve MCP</h2><p>Shell ve model context protokolü</p></div>
+                    <button class="s-btn primary" type="button" id="saveToolsSettings">Kaydet</button>
+                  </header>
+                  <div class="s-stack">
+                    <label class="s-row"><span class="s-row-copy"><strong>Shell araçları</strong><small>Ajanların komut çalıştırmasına izin</small></span><input type="checkbox" id="settingsAllowShell" class="s-switch" checked /></label>
+                    <label class="s-row"><span class="s-row-copy"><strong>MCP sunucuları</strong><small>Agent CLI MCP listesine güven</small></span><input type="checkbox" id="settingsAllowMcp" class="s-switch" /></label>
+                  </div>
+                  <div class="s-form" style="margin-top:12px">
+                    <label><span>MCP config (JSON / yollar)</span><textarea id="settingsMcpConfig" rows="5" placeholder='{"servers":{}}'></textarea></label>
+                  </div>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="browser">
+                  <header class="settings-panel-head"><h2>Tarayıcı</h2><p>Sandbox tarayıcı ve ağ davranışı</p></header>
+                  <div class="s-card s-card-row browser-permission-card">
+                    <div class="s-card-icon globe"><i class="fa-solid fa-globe"></i></div>
+                    <div class="s-card-copy"><strong>Tarayıcı kontrolü</strong><small>TaxCLI’nin yerleşik deneysel tarayıcıyı kullanmasına izin ver</small></div>
+                    <input type="checkbox" id="settingsBrowserAutoPanel" class="s-switch" checked />
+                  </div>
+                  <h3 class="s-section-title">Genel</h3>
+                  <div class="s-stack">
+                    <label class="s-row field"><span class="s-row-copy"><strong>Ana sayfa</strong><small>Tarayıcı açılış adresi</small></span><input id="settingsHomepage" class="s-input" placeholder="https://www.google.com" /></label>
+                    <label class="s-row"><span class="s-row-copy"><strong>Geçmişi koru</strong><small>Yeni görevde proje sohbetini tut</small></span><input type="checkbox" id="settingsKeepHistory" class="s-switch" /></label>
+                  </div>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="indexing">
+                  <header class="settings-panel-head"><h2>İndeksleme</h2><p>Proje hafızası ve yok sayılanlar</p></header>
+                  <div class="s-stack">
+                    <label class="s-row"><span class="s-row-copy"><strong>Proje hafızası (.aihub)</strong><small>Ajan bağlam klasörünü kullan</small></span><input type="checkbox" id="settingsUseMemory" class="s-switch" checked /></label>
+                    <label class="s-row"><span class="s-row-copy"><strong>Yoksayılanlar</strong><small>node_modules, .git atlanır</small></span><input type="checkbox" id="settingsIndexIgnore" class="s-switch" checked /></label>
+                  </div>
+                  <button class="s-btn" id="rebuildIndexHint" type="button" style="margin-top:12px">Hafızayı yeniden üret</button>
+                </section>
+
+                <section class="settings-panel" data-settings-panel="beta">
+                  <header class="settings-panel-head"><h2>Beta</h2><p>Deneysel özellikler</p></header>
+                  <div class="s-stack">
+                    <label class="s-row"><span class="s-row-copy"><strong>Akış hata ayıklama</strong><small>Ham stream satırlarını konsola yaz</small></span><input type="checkbox" id="settingsDebugStream" class="s-switch" /></label>
+                    <label class="s-row"><span class="s-row-copy"><strong>Deneysel efor bayrakları</strong><small>Motor uyumluysa eforu CLI’ye ilet</small></span><input type="checkbox" id="settingsExperimentalEffort" class="s-switch" checked /></label>
+                    <label class="s-row"><span class="s-row-copy"><strong>Beta rozeti</strong><small>Üst çubukta beta etiketi</small></span><input type="checkbox" id="settingsBetaBadge" class="s-switch" /></label>
+                  </div>
+                </section>
+
+                <div class="settings-footer">
+                  <button class="danger-button" id="clearAllData" type="button"><i class="fa-solid fa-trash-can"></i> Tüm yerel veriyi temizle</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div class="project-context-menu" id="projectContextMenu"><button id="contextOpenTerminal"><i class="fa-solid fa-terminal"></i> Terminal aç</button><button class="danger" id="contextRemoveProject"><i class="fa-solid fa-trash-can"></i> Listeden kaldır</button></div>
+    <section class="terminal-drawer" id="terminalDrawer"><header><span><i class="fa-solid fa-terminal"></i> Terminal</span><code id="terminalCwd"></code><button id="terminalClose"><i class="fa-solid fa-xmark"></i></button></header><pre id="terminalOutput"></pre><div class="terminal-input-row"><span>PS&gt;</span><input id="terminalInput" autocomplete="off" spellcheck="false" placeholder="Komut yaz ve Enter'a bas" /></div></section>
+    <div class="modal-backdrop" id="pluginModal"><div class="modal"><button class="modal-close" data-close-modal="pluginModal"><i class="fa-solid fa-xmark"></i></button><div class="plugin-modal-icon" id="pluginModalIcon"></div><h3 id="pluginModalTitle">Eklenti</h3><p class="modal-copy" id="pluginModalCopy"></p><div class="permission-list"><span><i class="fa-solid fa-check"></i> Yalnızca izin verdiğin projelerde çalışır</span><span><i class="fa-solid fa-check"></i> Hassas eylemlerden önce onay ister</span></div><button class="primary-button" id="confirmPlugin">Bağla</button></div></div>
+    <div class="modal-backdrop" id="apiKeyModal"><div class="modal"><button class="modal-close" data-close-modal="apiKeyModal"><i class="fa-solid fa-xmark"></i></button><div class="plugin-modal-icon"><i class="fa-solid fa-key"></i></div><h3 id="apiKeyModalTitle">API Anahtarı</h3><p class="modal-copy" id="apiKeyModalCopy">Anahtar yalnızca bu bilgisayarda saklanır.</p><label class="api-key-label">API Key<input id="apiKeyInput" type="password" placeholder="nvapi-…" autocomplete="off" /></label><div class="api-key-actions"><button class="ghost-button" id="clearApiKey" type="button">Temizle</button><button class="primary-button" id="saveApiKey" type="button">Kaydet</button></div></div></div>
+    <div class="toast" id="toast"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a reproducible problem in TaxCLI
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Remove API keys, tokens, private prompts, personal paths, and proprietary code. Security vulnerabilities must be reported privately according to SECURITY.md.
+
+  - type: input
+    id: version
+    attributes:
+      label: TaxCLI version or commit
+      placeholder: v0.1.0-alpha.1 or commit hash
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 23H2
+    validations:
+      required: true
+
+  - type: input
+    id: engine
+    attributes:
+      label: Provider CLI and version
+      description: Include the output of the provider's version command when relevant.
+      placeholder: codex 1.2.3
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Add a test project
+        2. Select OpenCode
+        3. Start a prompt
+        4. Observe...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs or screenshots
+      description: Drag files here after removing secrets and private information.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: I removed secrets and private information.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

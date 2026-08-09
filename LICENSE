@@ -1,0 +1,115 @@
+Taxperia Non-Commercial Attribution License
+Version 1.0, 9 August 2026
+
+Copyright (c) 2026 Taxperia. All rights reserved.
+
+1. DEFINITIONS
+
+"Software" means this source code, its documentation, assets, and any
+modified or derivative version of them, excluding third-party components
+that are distributed under their own licenses.
+
+"Non-Commercial Purpose" means personal, educational, academic, charitable,
+or research use that is not primarily intended for or directed toward
+commercial advantage, monetary compensation, business operations, or the
+generation of revenue.
+
+"Commercial Use" includes, without limitation:
+
+a. selling, licensing, renting, or charging for the Software or a service
+   that includes or depends on the Software;
+b. using the Software within or on behalf of a for-profit organization,
+   paid consultancy, commercial product, hosted service, or revenue-
+   generating activity;
+c. distributing the Software as part of a paid product or service; and
+d. removing or obscuring the required attribution in order to present the
+   Software as another party's original work.
+
+2. NON-COMMERCIAL LICENSE GRANT
+
+Subject to every condition in this License, Taxperia grants you a revocable,
+non-exclusive, non-transferable, non-sublicensable, worldwide, royalty-free
+license to view, download, run, copy, modify, and redistribute the Software
+solely for Non-Commercial Purposes.
+
+No patent, trademark, commercial, or other right is granted except the
+limited copyright permission expressly stated above.
+
+3. ATTRIBUTION REQUIREMENTS
+
+Every original, modified, or derivative application that uses any substantial
+part of the Software must:
+
+a. display the words "Created by Taxperia" or
+   "Based on TaxCLI by Taxperia" in a readily accessible About,
+   Credits, Settings, or equivalent screen;
+b. link the displayed name, where links are supported, to
+   https://github.com/Taxperia;
+c. preserve this License, the copyright notice, and all existing attribution
+   notices in source and distributed copies; and
+d. clearly state when the Software has been modified.
+
+The attribution must be reasonably visible and must not be hidden, removed,
+obscured, or presented in a misleading manner.
+
+4. COMMERCIAL USE
+
+Commercial Use is prohibited unless Taxperia grants a separate commercial
+license in a written agreement signed or otherwise expressly approved by
+Taxperia.
+
+Commercial licensing requests may be directed through:
+https://github.com/Taxperia
+
+Payment, sponsorship, contribution, or possession of a copy does not by
+itself grant commercial rights.
+
+5. REDISTRIBUTION
+
+Non-commercial redistribution of original or modified copies is permitted
+only when:
+
+a. the redistribution is made under this License;
+b. recipients receive a complete copy of this License;
+c. the attribution requirements in Section 3 are satisfied; and
+d. no additional terms restrict recipients from exercising the
+   non-commercial permissions granted by this License.
+
+6. TRADEMARKS AND ENDORSEMENT
+
+This License does not grant permission to use the names, logos, or trademarks
+of Taxperia or TaxCLI except as strictly necessary to provide the
+required attribution. Modified versions must not imply endorsement by or
+official status from Taxperia.
+
+7. TERMINATION
+
+Any violation of this License automatically terminates the permissions
+granted to you. Upon termination, you must stop using and distributing the
+Software and remove all copies under your control. Taxperia may reinstate
+permission in writing.
+
+8. THIRD-PARTY COMPONENTS
+
+Third-party libraries, fonts, icons, and other components remain governed by
+their respective licenses. See THIRD_PARTY_NOTICES.md. Nothing in this License
+reduces rights granted directly by a third-party license.
+
+9. NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. YOU USE THE SOFTWARE
+AT YOUR OWN RISK.
+
+10. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, TAXPERIA AND CONTRIBUTORS WILL NOT BE
+LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM OR RELATED TO
+THE SOFTWARE OR ITS USE, WHETHER IN CONTRACT, TORT, OR OTHERWISE.
+
+11. ENTIRE LICENSE
+
+This License is the complete public license for the Software. Any commercial
+permission, exception, or alternative term must be provided separately in
+writing by Taxperia.

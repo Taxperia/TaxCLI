@@ -1,0 +1,91 @@
+{
+  "name": "taxcli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local-first Windows desktop workspace for running AI coding CLIs from one interface.",
+  "author": "Taxperia",
+  "homepage": "https://github.com/Taxperia/TaxCLI",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Taxperia/TaxCLI.git"
+  },
+  "keywords": [
+    "ai-agents",
+    "coding-agents",
+    "cli",
+    "codex",
+    "copilot",
+    "cursor",
+    "electron",
+    "gemini-cli",
+    "local-first",
+    "opencode"
+  ],
+  "license": "SEE LICENSE IN LICENSE",
+  "os": [
+    "win32"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "node scripts/start.js",
+    "dev": "node scripts/start.js",
+    "check": "node --check electron/main.js && node --check electron/preload.js && node --check src/app.js && node --check scripts/start.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win",
+    "release": "electron-builder --win --publish always"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "allowScripts": {
+    "electron@43.2.0": true
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^7.3.1",
+    "electron-updater": "^6.8.9"
+  },
+  "build": {
+    "appId": "com.taxperia.taxcli",
+    "productName": "TaxCLI",
+    "asar": true,
+    "compression": "maximum",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "src/logo-icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "TaxCLI"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Taxperia",
+        "repo": "TaxCLI",
+        "releaseType": "release"
+      }
+    ]
+  }
+}
