@@ -35,7 +35,22 @@ jobs:
       - name: Check JavaScript syntax
         run: npm run check
 
-      - name: Build and publish release
+      - name: Build Windows installer
         run: npm run release
+
+      - name: Publish GitHub release
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match package version $version"
+          }
+          gh release create "${{ github.ref_name }}" `
+            "release/TaxCLI-Setup-$version.exe" `
+            "release/TaxCLI-Setup-$version.exe.blockmap" `
+            "release/latest.yml" `
+            --repo "${{ github.repository }}" `
+            --title "TaxCLI v$version" `
+            --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

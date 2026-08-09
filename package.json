@@ -35,7 +35,7 @@
     "check": "node --check electron/main.js && node --check electron/preload.js && node --check src/app.js && node --check scripts/start.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win",
-    "release": "electron-builder --win --publish always"
+    "release": "electron-builder --win"
   },
   "devDependencies": {
     "electron": "^43.2.0",
@@ -56,6 +56,7 @@
     "directories": {
       "output": "release"
     },
+    "artifactName": "${productName}-Setup-${version}.${ext}",
     "files": [
       "electron/**/*",
       "src/**/*",
