@@ -1,11 +1,15 @@
 const engines = [
-  { id: "codex", name: "Codex", initial: "C", icon: "fa-solid fa-terminal", login: "ChatGPT ile giriş" },
-  { id: "opencode", name: "OpenCode", initial: "O", icon: "fa-solid fa-code", login: "OpenCode'u aç" },
-  { id: "cursor", name: "Cursor Agent", initial: "Cu", icon: "fa-solid fa-arrow-pointer", login: "Cursor ile giriş" },
-  { id: "copilot", name: "Copilot", initial: "Co", icon: "fa-brands fa-github", login: "GitHub ile giriş" },
-  { id: "gemini", name: "Gemini", initial: "G", icon: "fa-solid fa-gem", login: "Google ile giriş" },
-  { id: "nvidia", name: "NVIDIA", initial: "NV", icon: "fa-solid fa-microchip", login: "NVIDIA API bağla" }
+  { id: "codex", name: "Codex", initial: "C", logo: "assets/engines/codex.svg", logoClass: "invert-dark", login: "ChatGPT ile giriş" },
+  { id: "opencode", name: "OpenCode", initial: "O", logo: "assets/engines/opencode.svg", logoClass: "mono-light", login: "OpenCode'u aç" },
+  { id: "cursor", name: "Cursor Agent", initial: "Cu", logo: "assets/engines/cursor.svg", logoClass: "mono-light", login: "Cursor ile giriş" },
+  { id: "copilot", name: "Copilot", initial: "Co", logo: "assets/engines/copilot.svg", logoClass: "mono-light", login: "GitHub ile giriş" },
+  { id: "gemini", name: "Gemini", initial: "G", logo: "assets/engines/gemini.svg", login: "Google ile giriş" },
+  { id: "nvidia", name: "NVIDIA", initial: "NV", logo: "assets/engines/nvidia.svg", login: "NVIDIA API bağla" }
 ];
+
+function renderEngineLogo(engine) {
+  return `<img class="engine-logo ${engine.logoClass || ""}" src="${engine.logo}" alt="" aria-hidden="true">`;
+}
 
 const plugins = [
   { id:"browser", name:"Tarayıcı", icon:"fa-solid fa-globe", auth:"local", ready:true, description:"Tüm modeller için güvenli web tarayıcısı" },
@@ -1247,7 +1251,7 @@ function renderEffortDropdown() {
   if (!list) return;
   list.innerHTML = levels.map((level) => {
     const titles = { low: "Düşük", medium: "Orta", high: "Yüksek", ultra: "Ultra", max: "Maks" };
-    return `<button type="button" data-effort="${level}" class="${effortLevel === level ? "selected" : ""}"><i class="fa-solid ${effortLevel === level ? "fa-check" : "fa-circle"}"></i><span class="model-option-text"><strong>${titles[level] || level}</strong><small>${level}</small></span></button>`;
+    return `<button type="button" data-effort="${level}" class="${effortLevel === level ? "selected" : ""}"><i class="fa-solid ${effortLevel === level ? "fa-check" : "fa-circle"}"></i><span class="model-option-text"><strong>${titles[level] || level}</strong></span></button>`;
   }).join("");
   $$("[data-effort]").forEach((button) => button.addEventListener("click", () => {
     effortLevel = button.dataset.effort;
@@ -2931,7 +2935,7 @@ function renderEngines() {
   $("#engineStrip").innerHTML = engines.map((engine) => {
     const info = byId[engine.id] || {};
     const ready = info.installed && info.authenticated;
-    return `<button class="engine-chip ${engine.id === activeEngine ? "active" : ""} ${info.installed ? "installed" : ""} ${ready ? "authed" : ""}" data-engine="${engine.id}"><i class="${engine.icon}"></i><span class="mini-dot"></span>${engine.name}</button>`;
+    return `<button class="engine-chip ${engine.id === activeEngine ? "active" : ""} ${info.installed ? "installed" : ""} ${ready ? "authed" : ""}" data-engine="${engine.id}">${renderEngineLogo(engine)}<span class="mini-dot"></span>${engine.name}</button>`;
   }).join("");
   $("#connectionList").innerHTML = engines.map((engine) => {
     const info = byId[engine.id] || {};
@@ -2957,7 +2961,7 @@ function renderEngines() {
           : "BULUNAMADI";
     const stateClass = authenticated ? "ready" : (installed || needsCursorAgent || needsCopilotCli) ? "installed" : "";
     return `<article class="connection">
-      <span class="connection-logo"><i class="${engine.icon}"></i></span>
+      <span class="connection-logo">${renderEngineLogo(engine)}</span>
       <div class="connection-info"><strong>${engine.name}</strong><small>${escapeHtml(detail)}</small></div>
       <span class="connection-state ${stateClass}">${stateLabel}</span>
       <div class="connection-actions">
@@ -3025,7 +3029,7 @@ function updateModelButton() {
   const selectedId = modelByEngine[activeEngine] || "";
   const match = normalizeModelEntries(availableModels[activeEngine] || []).find((item) => item.id === selectedId);
   const modelLabel = match?.label || selectedId || "Varsayılan";
-  $("#modelButton").innerHTML = `${engineName} · ${modelLabel} <i class="fa-solid fa-chevron-down"></i>`;
+  $("#modelButton").innerHTML = `${escapeHtml(engineName)} · ${escapeHtml(modelLabel)} <i class="fa-solid fa-chevron-down"></i>`;
 }
 
 function toggleMenu(id, force) {

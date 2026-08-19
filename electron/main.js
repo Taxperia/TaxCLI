@@ -1155,7 +1155,6 @@ function prettyCopilotLabel(id, name, blurb) {
     .replace(/\b([a-z])/g, (m) => m.toUpperCase())
     .replace(/Gpt-/g, "GPT-")
     .replace(/Gpt /g, "GPT ")
-    .replace(/Claude /g, "Claude ")
     .replace(/\s+/g, " ")
     .trim();
   return blurb ? `${pretty} · ${blurb}` : pretty;
