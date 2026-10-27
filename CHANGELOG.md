@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Borderless profile/type/effort control and responsive composer footer
 - Multi-resolution Windows icons, explicit taskbar identity and a branded development executable while preserving the original Electron runtime
 - Release notes comparing v0.1.0 and v1.1.0, a manual Windows installer, source code, dependency inventory and checksums
+- Security updates for Electron and vulnerable build-tool dependencies; the complete dependency audit reports no known vulnerabilities
 
 ### Added
 
