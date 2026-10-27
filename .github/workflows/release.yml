@@ -5,29 +5,76 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag, matching package.json (for example v1.2.3)"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  signing:
+    name: Check signed publication configuration
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      enabled: ${{ steps.signing.outputs.enabled }}
+    steps:
+      - name: Detect signing credentials without exposing their values
+        id: signing
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if [ -n "$WIN_CSC_LINK" ] && [ -n "$WIN_CSC_KEY_PASSWORD" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Signed publication skipped: configure WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD. Manual unsigned releases must be labelled and must not publish latest.yml."
+          fi
+
   windows:
     name: Build and publish Windows release
+    needs: signing
+    if: needs.signing.outputs.enabled == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
 
     steps:
+      - name: Validate release tag
+        id: release
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw "A stable vMAJOR.MINOR.PATCH tag is required" }
+          "tag=$env:RELEASE_TAG" >> $env:GITHUB_OUTPUT
+
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.tag }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22.12
+          node-version: 22
           cache: npm
+
+      - name: Match package version to release tag
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ("v$version" -ne $env:RELEASE_TAG) { throw "Release tag must match package.json version" }
 
       - name: Install dependencies
         run: npm ci
@@ -35,22 +82,63 @@ jobs:
       - name: Check JavaScript syntax
         run: npm run check
 
-      - name: Build Windows installer
-        run: npm run release
+      - name: Run tests
+        run: npm run test --if-present
 
-      - name: Publish GitHub release
+      - name: Test update artifact validation
+        run: node --test tests/update-artifacts.test.js
+
+      - name: Require release signing credentials
+        run: node scripts/require-signing.js
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Build Windows installer
+        run: npm run release -- --publish never
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Verify Authenticode signature
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release\TaxCLI-Setup-*.exe | Select-Object -First 1
+          if (-not $installer) { throw "Windows installer was not produced" }
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+          if ($signature.Status -ne "Valid") { throw "Installer signature is not valid: $($signature.Status)" }
+
+      - name: Verify update manifest and installer checksum
+        run: node scripts/verify-update-artifacts.cjs
+
+      - name: Generate SBOM and checksums
+        shell: pwsh
+        run: |
+          npm sbom --sbom-format cyclonedx | Out-File -Encoding utf8 release\taxcli-sbom.cdx.json
+          Get-ChildItem release\TaxCLI-Setup-*.exe,release\*.blockmap,release\latest.yml |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } |
+            Out-File -Encoding ascii release\SHA256SUMS.txt
+
+      - name: Upload and publish complete GitHub release
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
-          if ("v$version" -ne "${{ github.ref_name }}") {
-            throw "Tag ${{ github.ref_name }} does not match package version $version"
-          }
-          gh release create "${{ github.ref_name }}" `
+          $notesPath = "docs/releases/v$version.md"
+          $notesArgs = if (Test-Path -LiteralPath $notesPath) { @("--notes-file", $notesPath) } else { @("--generate-notes") }
+          gh release create $env:RELEASE_TAG `
             "release/TaxCLI-Setup-$version.exe" `
             "release/TaxCLI-Setup-$version.exe.blockmap" `
             "release/latest.yml" `
-            --repo "${{ github.repository }}" `
+            "release/taxcli-sbom.cdx.json" `
+            "release/SHA256SUMS.txt" `
+            --repo $env:GH_REPO `
             --title "TaxCLI v$version" `
-            --generate-notes
+            @notesArgs --verify-tag --draft
+          if ($LASTEXITCODE -ne 0) { throw "Release asset upload failed; release was not published" }
+          gh release edit $env:RELEASE_TAG --repo $env:GH_REPO --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw "Release publication failed" }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}

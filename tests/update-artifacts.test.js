@@ -1,0 +1,30 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs/promises");
+const path = require("node:path");
+const os = require("node:os");
+const crypto = require("node:crypto");
+const yaml = require("js-yaml");
+const { verifyUpdateArtifacts } = require("../scripts/verify-update-artifacts.cjs");
+
+test("release metadata must match the installer that will actually be published", async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "taxcli-release-check-"));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const version = "1.2.3", filename = `TaxCLI-Setup-${version}.exe`, bytes = Buffer.from("installer fixture");
+  const digest = crypto.createHash("sha512").update(bytes).digest("base64");
+  const manifest = { version, path: filename, sha512: digest, files: [{ url: filename, sha512: digest, size: bytes.length }] };
+  const save = () => fs.writeFile(path.join(directory, "latest.yml"), yaml.dump(manifest));
+  await fs.writeFile(path.join(directory, filename), bytes);
+  await fs.writeFile(path.join(directory, filename + ".blockmap"), "blockmap fixture");
+  await save();
+  assert.equal((await verifyUpdateArtifacts(directory, version)).filename, filename);
+  await assert.rejects(verifyUpdateArtifacts(directory, "1.2.4"), /version/);
+  manifest.files[0].url = "../wrong-installer.exe"; await save();
+  await assert.rejects(verifyUpdateArtifacts(directory, version), /exact Windows installer/);
+  manifest.files[0].url = filename; await save();
+  await fs.writeFile(path.join(directory, filename), "different installer");
+  await assert.rejects(verifyUpdateArtifacts(directory, version), /checksum or size/);
+  await fs.writeFile(path.join(directory, filename), bytes);
+  await fs.writeFile(path.join(directory, filename + ".blockmap"), "");
+  await assert.rejects(verifyUpdateArtifacts(directory, version), /blockmap is empty/);
+});

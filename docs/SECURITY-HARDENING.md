@@ -1,22 +1,22 @@
 # Security Hardening Plan
 
-This is a prioritized engineering backlog, not a claim that the current alpha is hardened. TaxCLI sits at a sensitive boundary: untrusted project content and web content can influence AI agents that inherit the user's filesystem and process permissions.
+This is a prioritized engineering backlog, not a claim that the current alpha is fully hardened. TaxCLI now implements workspace trust, encrypted secrets, redaction, snapshots, command classification, webview restrictions, bounded agent runs, a CSP without inline script/style permission, centralized IPC structural limits, tamper-evident audit events, minimized child-process environments, HTTPS LAN pairing, and hardened Electron fuses. The remaining items below still matter because untrusted project and web content can influence AI agents that run with the user's operating-system permissions.
 
 ## P0 — Before distributing binaries
 
 ### Move secrets out of JSON files
 
-Provider keys are currently written to `provider-keys.json` and, for NVIDIA/OpenCode, to OpenCode's authentication file. Store TaxCLI-owned secrets with Windows Credential Manager or Electron `safeStorage`. Restrict file permissions for unavoidable provider files, migrate existing values once, and delete the plaintext copy only after successful migration.
+TaxCLI-owned provider keys are encrypted with Electron `safeStorage` (Windows DPAPI), and legacy plaintext values are migrated on first read. NVIDIA anahtarı artık OpenCode `auth.json` dosyasına kopyalanmaz; eski kopya yalnızca TaxCLI kasasındaki değerle birebir eşleşiyorsa temizlenir. Provider CLIs may still maintain their own authentication files; those remain under the provider's control.
 
 The renderer should receive only `configured: true` plus a minimal masked hint, never the secret itself. Redact secrets from errors, child-process output, diagnostics, history, and crash reports.
 
 ### Disable or isolate the embedded browser
 
-The current `<webview>` surface can load arbitrary HTTP/HTTPS pages and execute JavaScript inside them. Calling it “sandboxed” overstates the protection. Disable it by default until there is a threat model.
+The `<webview>` surface remains experimental. It now strips preload access, forces sandboxed web preferences, denies OS permissions, downloads and popups, permits only HTTPS plus loopback HTTP, checks redirects/main-frame navigation, keeps a separate partition, and asks before model-driven clicks, typing, key presses, or cross-origin navigation. A dedicated browser threat model and stronger process-level isolation remain release work.
 
 If retained:
 
-- Remove `allowpopups`.
+- Keep `allowpopups` removed.
 - Permit only `https:` navigation, with an explicit exception for controlled local development.
 - Validate `will-attach-webview`, strip preload scripts, and force secure web preferences.
 - Block permissions by default: camera, microphone, geolocation, notifications, MIDI, Bluetooth, serial, USB, clipboard, and screen capture.
@@ -65,14 +65,14 @@ Show the exact command, canonical paths, environment-variable names, and diff su
 
 ### Harden Electron
 
-Keep `contextIsolation: true`, `nodeIntegration: false`, and `sandbox: true`. Add:
+Packaged builds now keep `contextIsolation: true`, `nodeIntegration: false`, and `sandbox: true`, and flip Electron fuses to disable `RunAsNode`, Node option/inspect arguments and extra `file:` privileges while enabling cookie encryption, embedded ASAR integrity validation, and ASAR-only app loading. Continue to enforce:
 
 - A restrictive Content Security Policy without `unsafe-eval`
 - Navigation blocking for the application window
 - Permission request and permission check handlers that deny by default
 - Strict external URL handling with normalized `https:` URLs
 - No remote module, exposed `ipcRenderer`, or generic invoke channel
-- Fuses that disable `RunAsNode`, embedded ASAR integrity bypasses, and unnecessary Node options in packaged builds
+- Automated inspection of the actual packaged executable's fuse state
 
 Review all HTML generation paths for cross-site scripting. Project names, model labels, CLI output, Markdown, filenames, and browser content are untrusted even when they originate locally.
 
@@ -82,11 +82,13 @@ Continue using executable-plus-argument arrays with `shell: false` whenever poss
 
 - Resolve executables from trusted locations and display the resolved path.
 - Detect executable replacement after trust is granted.
-- Inherit only required environment variables.
+- Inherit only required environment variables. TaxCLI uses an allowlist and injects only the selected provider's credential.
 - Cap stdout/stderr and event-buffer sizes.
 - Kill complete process trees on stop, timeout, app exit, and crash recovery.
 - Do not log full command environments.
 - Require confirmation before launching executables found inside the selected repository.
+
+TaxCLI also applies wall-clock, output, concurrency, and root-process memory limits. These controls reduce impact but are not a Windows security sandbox: descendant-process accounting, restricted tokens, AppContainer/Windows Sandbox isolation, and network egress enforcement remain future work.
 
 ### Protect local data
 

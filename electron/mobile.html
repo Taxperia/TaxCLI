@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+  <meta name="theme-color" content="#000000">
+  <title>TaxCLI Mobil</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body class="chat-page">
+  <header class="chat-header">
+    <span class="app-mark" aria-label="TaxCLI">T</span>
+    <button class="project-pill" id="projectPicker" type="button" aria-haspopup="dialog" aria-controls="projectPanel">
+      <strong id="project">Proje seç</strong>
+      <span class="project-subtitle"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 7V5a1 1 0 0 1 1-1h6l2 3h8a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"/></svg><span id="engine">TaxCLI · Bağlanıyor</span><span class="connection-dot" id="connectionDot"></span></span>
+    </button>
+    <button class="icon-button header-menu" id="moreButton" type="button" aria-label="Bağlantı seçenekleri" aria-haspopup="menu" aria-expanded="false" aria-controls="connectionMenu"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+    <div class="connection-menu" id="connectionMenu" role="menu" hidden>
+      <button id="refreshOptions" type="button" role="menuitem">Proje ve modelleri yenile</button>
+      <button id="logout" type="button" role="menuitem">Bu telefondan çıkış yap</button>
+    </div>
+  </header>
+
+  <main class="chat-main">
+    <section id="approvals" aria-live="polite" aria-label="Bekleyen işlem onayları"></section>
+    <section id="messages" aria-label="Sohbet"></section>
+  </main>
+
+  <dialog id="projectPanel" class="settings-sheet" aria-labelledby="projectPanelTitle">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <header class="sheet-header"><div><h2 id="projectPanelTitle">Proje seç</h2><p>Görevin hangi klasörde çalışacağını belirle.</p></div><button class="icon-button" data-close-panel type="button" aria-label="Proje seçimini kapat">×</button></header>
+    <div class="settings-fields">
+      <label>Proje<select id="mobileProject" aria-label="Proje"></select></label>
+    </div>
+    <p class="selection-note">Kayıtlı projelerin burada görünür. Yeni proje eklemek ve güven vermek için masaüstünü kullan.</p>
+    <button class="sheet-done" data-close-panel type="button">Tamam</button>
+  </dialog>
+
+  <dialog id="modelPanel" class="settings-sheet" aria-labelledby="modelPanelTitle">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <header class="sheet-header"><div><h2 id="modelPanelTitle">Sağlayıcı ve model</h2><p>Bu görevi çalıştıracak modeli seç.</p></div><button class="icon-button" data-close-panel type="button" aria-label="Model seçimini kapat">×</button></header>
+    <div class="settings-fields">
+      <label>Sağlayıcı<select id="mobileEngine" aria-label="Sağlayıcı"></select></label>
+      <label>Model<select id="mobileModel" aria-label="Model"></select></label>
+    </div>
+    <p class="selection-note">Yalnızca bilgisayarında kurulu ve giriş yapılmış sağlayıcılar seçilebilir.</p>
+    <button class="sheet-done" data-close-panel type="button">Tamam</button>
+  </dialog>
+
+  <dialog id="approvalPanel" class="settings-sheet" aria-labelledby="approvalPanelTitle">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <header class="sheet-header"><div><h2 id="approvalPanelTitle">İşlem izinleri</h2><p>Yeni görevlerde ajanın hangi izinle çalışacağını seç.</p></div><button class="icon-button" data-close-panel type="button" aria-label="İzin seçimini kapat">×</button></header>
+    <div class="settings-fields">
+      <label>Onay modu<select id="mobileApproval" aria-label="Onay modu"><option value="ask">Her işlemde sor</option><option value="auto_edit">Dosya düzenlemelerine izin ver</option><option value="plan">Plan / salt okunur</option></select></label>
+    </div>
+    <p class="selection-note">Her işlemde sor: gerekli işlemler için onay istenir.<br>Dosya düzenlemeleri: proje içi düzenlemelere izin verir; diğer işlemler sağlayıcının kurallarına tabidir.<br>Plan: salt okunur çalışır.</p>
+    <button class="sheet-done" data-close-panel type="button">Tamam</button>
+  </dialog>
+
+  <dialog id="taskPanel" class="settings-sheet" aria-labelledby="taskPanelTitle">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <header class="sheet-header"><div><h2 id="taskPanelTitle">Görev kısayolları</h2><p>Mesajına bir başlangıç ekle, düzenleyip gönder.</p></div><button class="icon-button" data-close-panel type="button" aria-label="Görev kısayollarını kapat">×</button></header>
+    <div class="task-shortcuts">
+      <button type="button" data-task-prompt="Projenin yapısını incele ve önemli bileşenleri açıkla."><strong>Projeyi incele</strong><span>Yapıyı ve önemli bileşenleri öğren.</span></button>
+      <button type="button" data-task-prompt="Projenin mevcut testlerini çalıştır ve başarısız olan testleri nedenleriyle raporla."><strong>Testleri çalıştır</strong><span>Mevcut testlerin sonucunu kontrol et.</span></button>
+      <button type="button" data-task-prompt="Mevcut değişiklikleri incele; olası hataları ve eksikleri raporla."><strong>Değişiklikleri gözden geçir</strong><span>Olası hataları ve eksikleri bul.</span></button>
+    </div>
+  </dialog>
+
+  <div class="mobile-toast" id="mobileToast" role="status" aria-live="polite"></div>
+  <footer class="composer">
+    <div class="run-indicator" id="runIndicator" role="status" hidden><span class="working-dot"></span><span id="runLabel">Çalışıyor</span></div>
+    <div class="compose-box">
+      <label class="sr-only" for="prompt">Görev</label>
+      <textarea id="prompt" rows="2" maxlength="20000" placeholder="Bir görev ver…"></textarea>
+      <div class="compose-toolbar">
+        <button class="icon-button" id="taskSettings" type="button" aria-label="Görev kısayolları" aria-haspopup="dialog" aria-controls="taskPanel"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></svg></button>
+        <button class="icon-button approval-toggle" id="approvalPicker" type="button" aria-label="Onay modu: Her işlemde sor" aria-haspopup="dialog" aria-controls="approvalPanel"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 3 8 4v5c0 4-3 7-8 9-5-2-8-5-8-9V7l8-4Z"/><path id="approvalSymbol" d="m8 12 3 3 5-6"/></svg></button>
+        <button class="model-picker" id="modelPicker" type="button" aria-haspopup="dialog" aria-controls="modelPanel"><span id="modelLabel">Model seç</span><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 10 4 4 4-4"/></svg></button>
+        <button class="send-button" id="send" type="button" aria-label="Gönder" disabled><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button>
+      </div>
+    </div>
+  </footer>
+  <script src="/app.js"></script>
+</body>
+</html>

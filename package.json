@@ -1,6 +1,6 @@
 {
   "name": "taxcli",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "private": true,
   "description": "A local-first Windows desktop workspace for running AI coding CLIs from one interface.",
   "author": "Taxperia",
@@ -13,6 +13,7 @@
     "ai-agents",
     "coding-agents",
     "cli",
+    "claude-code",
     "codex",
     "copilot",
     "cursor",
@@ -26,44 +27,69 @@
     "win32"
   ],
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.13"
   },
   "main": "electron/main.js",
   "scripts": {
     "start": "node scripts/start.js",
     "dev": "node scripts/start.js",
-    "check": "node --check electron/main.js && node --check electron/preload.js && node --check src/app.js && node --check scripts/start.js",
+    "check": "node --check electron/main.js && node --check electron/app-updates.js && node --check electron/preload.js && node --check electron/mobile-bridge.js && node --check electron/mobile-client.js && node --check electron/chatgpt-accounts.js && node --check electron/provider-usage.js && node --check electron/provider-environment.js && node --check electron/cloudflare.js && node --check electron/security-center.js && node --check electron/workspace-services.js && node --check electron/change-review.js && node --check electron/workbench.js && node --check electron/workbench-ipc.js && node --check electron/task-queue.js && node --check electron/mcp-integration.js && node --check electron/process-guard.js && node --check src/agent-profiles.js && node --check src/office-mode.js && node --check src/model-router.js && node --check src/usage-analytics.js && node --check src/mcp-marketplace.js && node --check src/workbench.js && node --check src/app.js && node --check scripts/start.js && node --check scripts/require-signing.js",
+    "test": "node --test tests/*.test.js",
+    "security:audit": "npm audit --omit=dev --audit-level=high",
+    "security:sbom": "npm sbom --sbom-format cyclonedx",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win",
-    "release": "electron-builder --win"
+    "release": "node scripts/require-signing.js && electron-builder --win"
   },
   "devDependencies": {
-    "electron": "^43.4.0",
-    "electron-builder": "^26.15.3"
+    "@electron/fuses": "2.1.3",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
+    "resedit": "1.7.2"
   },
   "allowScripts": {
-    "electron@43.2.0": true
+    "electron@43.3.0": true
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.3.1",
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "pdfjs-dist": "^6.4.299",
+    "qrcode": "^1.5.4",
+    "selfsigned": "5.5.0"
   },
   "build": {
     "appId": "com.taxperia.taxcli",
     "productName": "TaxCLI",
     "asar": true,
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "loadBrowserProcessSpecificV8Snapshot": true,
+      "grantFileProtocolExtraPrivileges": false
+    },
     "compression": "maximum",
     "directories": {
       "output": "release"
     },
     "artifactName": "${productName}-Setup-${version}.${ext}",
+    "extraResources": [
+      {
+        "from": "src/logo-icon.ico",
+        "to": "logo-icon.ico"
+      }
+    ],
     "files": [
       "electron/**/*",
       "src/**/*",
       "package.json"
     ],
     "win": {
-      "icon": "src/logo-icon.png",
+      "icon": "src/logo-icon.ico",
+      "verifyUpdateCodeSignature": true,
       "target": [
         {
           "target": "nsis",
