@@ -1,6 +1,6 @@
 {
   "name": "taxcli",
-  "version": "1.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "A local-first Windows desktop workspace for running AI coding CLIs from one interface.",
   "author": "Taxperia",

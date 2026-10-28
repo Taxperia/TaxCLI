@@ -89,7 +89,7 @@ Download the latest installer from [GitHub Releases](https://github.com/Taxperia
 
 Installed builds check for updates after startup and every six hours and download available updates in the background. **Settings → General → Install and restart** applies a downloaded update when no agent task is running. Development builds do not auto-update.
 
-The v1.1.0 installer is a manual, unsigned release. Download it from GitHub Releases; an automatic-update manifest is not published for this unsigned build.
+The v0.1.1 installer is a manual, unsigned release. Download it from GitHub Releases; an automatic-update manifest is not published for this unsigned build.
 
 > The alpha installer is not yet code-signed and may trigger Windows SmartScreen. Verify that the installer comes from the official `Taxperia/TaxCLI` release page.
 
