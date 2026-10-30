@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Mark AI Office, Development Center, subagent teams and Multi-AI comparison as Beta in their navigation entries
+
+### Fixed
+
+- Windows packages use the standard V8 startup snapshot and retain the file protocol support required to load the application interface
+- Codex discovery prefers the standalone npm CLI over Store desktop and editor launchers; login terminals start in the user's home directory
+- Arena judge reports preserve every candidate within the context budget, retain valid JSON and identify any completed solutions missing scores
+- Multi-AI comparisons show queued, running, approval, testing and failed models immediately, with live output access and a separate judge status
+- Each comparison keeps all model outputs and its judge in one conversation, with a single sidebar entry and preserved model labels in history
+- Comparison copies stay under the selected project's `.taxcli/comparisons` directory; review shows the original destination before applying a solution
+- Locked candidate files no longer block subsequent models; cleanup is retryable and idempotent, provider errors remain visible, and all-failed comparisons skip judging
+- Theme-aware operation approval dialogs and permission menus, with keyboard navigation and viewport-constrained positioning
+- Approval dialogs show the requesting run's actual permission mode and explain when a newer menu selection applies only to future runs
+- Codex auto-edit routes eligible extra-access requests through Auto-review while preserving the workspace sandbox; ask and plan modes retain their existing policies
+
 ## [0.1.1] - 2026-10-28
 
 ### Interface and Windows packaging

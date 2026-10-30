@@ -111,6 +111,59 @@ test("judge rejects invalid scores and candidates with failing tests", async (t)
   assert.equal(result.winner, "variant-2"); assert.equal(result.status, "judged");
 });
 
+test("large judge evidence keeps every candidate and valid JSON within the prompt budget", async (t) => {
+  const { project, wb } = await setup(t);
+  const variants = Array.from({ length: 11 }, (_, i) => ({ variantId: `variant-${i + 1}`, engineId: "codex" }));
+  const arena = await wb.createArena(project, "Task ".repeat(20000), variants, { engineId: "codex" });
+  const completed = ["variant-1", "variant-2", "variant-8"];
+  await wb.mutate((state) => {
+    for (const variant of state.arenas[0].variants) {
+      variant.status = completed.includes(variant.variantId) ? "completed" : "cancelled";
+      variant.runId = variant.variantId;
+      variant.tests = { checks: [{ id: "test", code: 0, output: "Passed" }] };
+    }
+  });
+  wb.detail = async () => ({ response: "Done", changes: [{ path: "large.js", kind: "modified", hunks: [{ oldLines: ['"\\\n'.repeat(100000)], newLines: ["replacement".repeat(30000)] }] }] });
+  const prompt = await wb.judgePrompt(arena.id);
+  const reportsText = prompt.split("\nÇÖZÜMLER:\n")[1];
+  const reports = JSON.parse(reportsText);
+  assert.ok(reportsText.length <= 70000);
+  assert.ok(prompt.length < 100000);
+  assert.deepEqual(reports.map((report) => report.variantId), variants.map((variant) => variant.variantId));
+  assert.deepEqual(JSON.parse(prompt.split("PUANLANACAK ÇÖZÜMLER:\n")[1].split("\nGÖREV:")[0]), completed);
+  for (const report of reports.filter((candidate) => candidate.status === "completed")) {
+    assert.equal(report.truncated, true);
+    assert.equal(report.tests[0].code, 0);
+    assert.ok(report.changes[0].hunks[0].added.length > 0);
+  }
+  await assert.rejects(wb.saveJudgment(arena.id, JSON.stringify({ winner: "variant-1", evaluations: [{ variantId: "variant-1", quality: 66 }] })), /Çözüm 2, Çözüm 8/);
+  const judged = await wb.saveJudgment(arena.id, JSON.stringify({ winner: "variant-8", evaluations: completed.map((variantId, i) => ({ variantId, quality: 60 + i })) }));
+  assert.equal(judged.winner, "variant-8");
+});
+
+test("a judge prompt preserves small code and test evidence without clipping", async (t) => {
+  const { project, wb } = await setup(t);
+  const arena = await wb.createArena(project, "Task", [{ variantId: "variant-2" }], { engineId: "codex" });
+  await wb.mutate((state) => Object.assign(state.arenas[0].variants[0], { status: "completed", runId: "run", tests: { checks: [{ id: "test", code: 0, output: "All passed" }] } }));
+  wb.detail = async () => ({ response: "Implemented", changes: [{ path: "small.js", kind: "modified", hunks: [{ oldLines: ["before\n"], newLines: ["after\n"] }] }] });
+  const report = JSON.parse((await wb.judgePrompt(arena.id)).split("\nÇÖZÜMLER:\n")[1])[0];
+  assert.equal(report.response, "Implemented");
+  assert.equal(report.tests[0].output, "All passed");
+  assert.equal(report.changes[0].hunks[0].added, "after\n");
+  assert.equal(report.truncated, undefined);
+});
+
+test("the maximum comparison size keeps all completed candidates in the judge prompt", async (t) => {
+  const { project, wb } = await setup(t);
+  const variants = Array.from({ length: 64 }, (_, i) => ({ variantId: `variant-${i + 1}` }));
+  const arena = await wb.createArena(project, "Task", variants, { engineId: "codex" });
+  await wb.mutate((state) => state.arenas[0].variants.forEach((variant) => Object.assign(variant, { status: "completed", runId: variant.variantId })));
+  wb.detail = async () => ({ response: "Completed", changes: Array.from({ length: 25 }, (_, i) => ({ path: `file-${i}.js`, kind: "modified", hunks: [{ oldLines: ["before".repeat(1000)], newLines: ["after".repeat(1000)] }] })) });
+  const reportsText = (await wb.judgePrompt(arena.id)).split("\nÇÖZÜMLER:\n")[1];
+  assert.equal(JSON.parse(reportsText).length, 64);
+  assert.ok(reportsText.length <= 70000);
+});
+
 test("health reports missing tests honestly and discovers TODO markers", async (t) => {
   const { project, wb } = await setup(t);
   await fs.writeFile(path.join(project, "app.js"), "// TODO: improve\nconsole.log('hi');");

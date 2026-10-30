@@ -7,7 +7,7 @@ const os = require("node:os");
 const { autoUpdater } = require("electron-updater");
 const { createAppUpdates } = require("./app-updates");
 const { normalizeAgentId, resolveAgent } = require("../src/agent-profiles");
-const { readCodexAccountUsage, startCodexAppServerRun } = require("./codex-app-server");
+const { readCodexAccountUsage, readCodexModels, startCodexAppServerRun } = require("./codex-app-server");
 const { normalizeCodexUsage, normalizeCursorUsage } = require("./provider-usage");
 const { MobileBridge } = require("./mobile-bridge");
 const { ChatGptAccountManager, ChatGptAccountStore, codexChatGptPlanArgs } = require("./chatgpt-accounts");
@@ -18,6 +18,7 @@ const { McpIntegrationManager } = require("./mcp-integration");
 const { guardProcess } = require("./process-guard");
 const { registerWorkbench } = require("./workbench-ipc");
 const { withProviderEnv } = require("./provider-environment");
+const { assertOpenCodeModelAvailable, createOpenCodeDiagnostics } = require("./opencode-diagnostics");
 const { SecurityCenter, assessCommand, detectPromptInjection, redactSensitive, securityPromptDirectives } = require("./security-center");
 
 const ENGINE_COMMANDS = {
@@ -75,6 +76,12 @@ const ENGINE_COMMANDS = {
 const activeRuns = new Map();
 const activeTerminals = new Map();
 const parallelBatches = new Map();
+const { ComparisonWorkspaces } = require("./comparison-workspaces");
+const comparisonWorkspaces = new ComparisonWorkspaces({
+  batches: parallelBatches,
+  store: () => workbench,
+  trustWorkspace: (root) => createSecurityCenter().trustWorkspace(root)
+});
 const MAX_COMPARISON_VARIANTS = 64;
 const modelCache = new Map();
 const modelRequests = new Map();
@@ -593,9 +600,14 @@ function resolveCommand(command) {
     child.on("close", async (code) => {
       let selected = null;
       if (code === 0) {
-        const paths = output.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+        // The Store desktop launcher is not the Codex CLI. where.exe also
+        // searches the current directory, which may be the Store app folder.
+        const paths = output.split(/\r?\n/).map((value) => value.trim()).filter(Boolean)
+          .filter((value) => command !== "codex" || !/[\\/]WindowsApps[\\/]OpenAI\.Codex_[^\\/]+[\\/]app[\\/]Codex\.exe$/i.test(value));
         // Prefer .cmd/.exe over .ps1 — PowerShell -File breaks CLIs that pass bare "-" (Codex stdin).
-        selected = paths.find((value) => value.toLowerCase().endsWith(".exe"))
+        // Prefer the standalone npm CLI over an editor's embedded codex.exe.
+        selected = (command === "codex" && paths.find((value) => value.toLowerCase().endsWith(".cmd")))
+          || paths.find((value) => value.toLowerCase().endsWith(".exe"))
           || paths.find((value) => value.toLowerCase().endsWith(".cmd"))
           || paths.find((value) => !/\.(ps1|bat)$/i.test(value) && !value.toLowerCase().endsWith(".ps1"))
           || paths.find((value) => value.toLowerCase().endsWith(".ps1"))
@@ -1028,6 +1040,10 @@ function sanitizeHistoryForStorage(history) {
     if (item?.agentId) entry.agentId = normalizeAgentId(item.agentId);
     if (item?.engineId && ENGINE_COMMANDS[item.engineId]) entry.engineId = item.engineId;
     if (/^[a-f0-9-]{20,64}$/i.test(String(item?.recordId || ""))) entry.recordId = item.recordId;
+    if (/^(?:variant-\d{1,2}|judge)$/.test(String(item?.comparisonVariantId || ""))) {
+      entry.comparisonVariantId = item.comparisonVariantId;
+      entry.comparisonLabel = String(item.comparisonLabel || "").slice(0, 200);
+    }
     if (Array.isArray(item?.activity) && item.activity.length) {
       entry.activity = item.activity.slice(-40).map((act) => {
         if (!act || typeof act !== "object") return null;
@@ -1293,7 +1309,7 @@ function launchInteractiveTerminal(invocation, args, title = "TaxCLI Login") {
   }
   const quotePowerShell = (value) => `'${String(value).replaceAll("'", "''")}'`;
   const command = `& ${quotePowerShell(invocation.command)} ${[...invocation.prefix, ...args].map(quotePowerShell).join(" ")}`;
-  const child = spawn("cmd.exe", ["/d", "/c", "start", title, "powershell.exe", "-NoExit", "-NoProfile", "-Command", command], { detached: true, windowsHide: true, stdio: "ignore" });
+  const child = spawn("cmd.exe", ["/d", "/c", "start", title, "powershell.exe", "-NoExit", "-NoProfile", "-Command", command], { cwd: os.homedir(), detached: true, windowsHide: true, stdio: "ignore" });
   child.unref();
 }
 
@@ -1648,17 +1664,6 @@ function isCliAuthenticationError(value) {
   return /authentication required|not\s+logged|please log|login required|unauthori[sz]ed|--api-key|--auth-token/i.test(String(value || ""));
 }
 
-const CODEX_MODEL_CATALOG = Object.freeze([
-  { id: "gpt-6", label: "GPT-6" },
-  { id: "gpt-6-astra", label: "GPT-6 Astra" },
-  { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
-  { id: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
-  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
-  { id: "gpt-5.5", label: "GPT-5.5" },
-  { id: "gpt-5.4", label: "GPT-5.4" },
-  { id: "gpt-5.4-mini", label: "GPT-5.4 Mini" }
-]);
-
 // Claude Code accepts the stable family aliases and full model IDs. The CLI
 // validates account access at run time, so one account can expose more entries
 // than another without collapsing the selector to a single model.
@@ -1911,13 +1916,13 @@ async function listEngineModels(engineId) {
   if (!["codex", "opencode", "nvidia", "cursor", "copilot", "claude", "gemini"].includes(engineId)) return [];
   // Bump cache key when catalog logic changes so clients don't stick on wrong lists
   const cacheKey = engineId === "copilot" ? "copilot:v4" : engineId;
-  if (modelCache.has(cacheKey)) return modelCache.get(cacheKey);
+  if (!["codex", "opencode", "nvidia"].includes(engineId) && modelCache.has(cacheKey)) return modelCache.get(cacheKey);
   if (modelRequests.has(cacheKey)) return modelRequests.get(cacheKey);
   const request = (async () => {
     if (engineId === "codex") {
-      const models = CODEX_MODEL_CATALOG.map((model) => ({ ...model }));
-      modelCache.set(cacheKey, models);
-      return models;
+      const invocation = await resolveEngineInvocation("codex");
+      if (!invocation) throw new Error("Codex CLI bulunamadı.");
+      return readCodexModels({ invocation, env: enrichedEnv() });
     }
     if (engineId === "claude") {
       const models = CLAUDE_MODEL_CATALOG.map((model) => ({ ...model }));
@@ -2384,88 +2389,11 @@ ipcMain.handle("parallel:prepare", async (_event, payload) => {
   }
   if (variantsToPrepare.length < 2) throw new Error("Karşılaştırma için en az iki farklı model seçin.");
 
-  const variantsRoot = path.join(app.getPath("userData"), "comparison-runs");
-  const batchId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${crypto.randomBytes(3).toString("hex")}`;
-  const batchRoot = path.join(variantsRoot, batchId);
-  if (isPathInside(source, batchRoot) || isPathInside(batchRoot, source)) throw new Error("Karşılaştırma alanı kaynak projeden ayrı olmalıdır.");
-
-  const variantsRootInfo = await fs.lstat(variantsRoot).catch(() => null);
-  if (variantsRootInfo?.isSymbolicLink()) throw new Error("Varyant kökü sembolik bağlantı olamaz.");
-  await fs.mkdir(batchRoot, { recursive: true });
-
-  const variants = variantsToPrepare.map((variant, index) => {
-    const modelSlug = String(variant.model || "auto").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "auto";
-    return {
-      ...variant,
-      projectPath: path.join(batchRoot, `${String(index + 1).padStart(2, "0")}-${variant.engineId}-${modelSlug}`)
-    };
-  });
-  parallelBatches.set(batchId, {
-    source,
-    root: batchRoot,
-    variants: new Map(variants.map((variant) => [variant.variantId, variant.projectPath])),
-    activeVariantId: ""
-  });
-  // Every candidate must start from the same immutable input, even if the main
-  // project changes while a long arena is running. Keep it encrypted at rest.
-  const { captureProject } = require("./change-review");
-  try { await workbench.seal(`batch-${batchId}`, await captureProject(source)); }
-  catch (error) {
-    parallelBatches.delete(batchId);
-    await fs.rm(batchRoot, { recursive: true, force: true });
-    throw error;
-  }
-  return { batchId, root: batchRoot, variants };
+  return comparisonWorkspaces.prepare(source, variantsToPrepare);
 });
 
-ipcMain.handle("parallel:materialize", async (_event, payload) => {
-  const batchId = String(payload?.batchId || "");
-  const variantId = String(payload?.variantId || "");
-  const batch = parallelBatches.get(batchId);
-  if (!batch) throw new Error("Karşılaştırma oturumu bulunamadı.");
-  if (batch.activeVariantId) throw new Error("Önceki modelin çalışma alanı henüz temizlenmedi.");
-  const destination = batch.variants.get(variantId);
-  if (!destination || !isPathInside(batch.root, destination) || path.dirname(destination) !== batch.root) {
-    throw new Error("Karşılaştırma çalışma alanı doğrulanamadı.");
-  }
-  const destinationInfo = await fs.lstat(destination).catch(() => null);
-  if (destinationInfo) throw new Error("Karşılaştırma çalışma alanı zaten mevcut.");
-  const baseline = await workbench.unseal(`batch-${batchId}`);
-  const { safeFile } = require("./change-review");
-  await fs.mkdir(destination, { recursive: true });
-  for (const [relative, content] of Object.entries(baseline.files)) {
-    const target = await safeFile(destination, relative);
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, Buffer.from(content, "base64"));
-  }
-  await createSecurityCenter().trustWorkspace(destination);
-  batch.activeVariantId = variantId;
-  return { projectPath: destination };
-});
-
-ipcMain.handle("parallel:cleanup", async (_event, payload) => {
-  const batchId = String(payload?.batchId || "");
-  const variantId = String(payload?.variantId || "");
-  const batch = parallelBatches.get(batchId);
-  if (!batch) return true;
-  if (batch.activeVariantId && batch.activeVariantId !== variantId) {
-    throw new Error("Başka bir modelin etkin çalışma alanı temizlenemez.");
-  }
-  const destination = batch.variants.get(variantId);
-  if (!destination || !isPathInside(batch.root, destination) || path.dirname(destination) !== batch.root) {
-    throw new Error("Temizlenecek karşılaştırma alanı doğrulanamadı.");
-  }
-  await fs.rm(destination, { recursive: true, force: true });
-  batch.activeVariantId = "";
-  batch.variants.delete(variantId);
-  if (!batch.variants.size) {
-    await fs.rm(batch.root, { recursive: true, force: true });
-    await fs.rm(workbench.file(`batch-${batchId}`), { force: true });
-    parallelBatches.delete(batchId);
-  }
-  return true;
-});
-
+ipcMain.handle("parallel:materialize", async (_event, payload) => comparisonWorkspaces.materialize(payload || {}));
+ipcMain.handle("parallel:cleanup", async (_event, payload) => comparisonWorkspaces.cleanup(payload || {}));
 ipcMain.handle("office:prepare", async (_event, payload) => {
   const source = path.resolve(String(payload?.projectPath || ""));
   const sourceStats = await fs.stat(source).catch(() => null);
@@ -2565,6 +2493,9 @@ ipcMain.handle("agent:start", async (event, payload) => {
   const invocation = await resolveEngineInvocation(engineId);
   if (!invocation) throw new Error(`${engine.command} bu bilgisayarda bulunamadı. Bağlantılar'dan kurup giriş yapın.`);
   const model = String(payload.model || "").trim();
+  if (["opencode", "nvidia"].includes(engineId) && model) {
+    assertOpenCodeModelAvailable(model, await listEngineModels(engineId));
+  }
   const requestedApprovalMode = ["ask", "auto_edit", "plan"].includes(payload.approvalMode) ? payload.approvalMode : "ask";
   const agentResolution = resolveAgent(payload.agentId, routingPrompt, {
     plan: requestedApprovalMode === "plan",
@@ -2913,6 +2844,7 @@ ipcMain.handle("agent:start", async (event, payload) => {
   let lastStatusAt = 0;
   let outputBytes = 0;
   const isOpenCode = ["opencode", "nvidia"].includes(engineId);
+  const openCodeDiagnostics = createOpenCodeDiagnostics();
   const MAX_WAIT_MS = engineId === "nvidia" || String(model).startsWith("nvidia/") ? 15 * 60 * 1000 : engineId === "gemini" ? 120000 : 10 * 60 * 1000;
   const usesNvidiaProvider = engineId === "nvidia" || String(model).startsWith("nvidia/");
   const IDLE_KILL_MS = engineId === "gemini" ? 55000 : usesNvidiaProvider ? 75000 : 100000;
@@ -2974,7 +2906,15 @@ ipcMain.handle("agent:start", async (event, payload) => {
     }
   }, 2000);
 
+  const emitOutputLine = (stream, safeLine) => {
+    const parsedEvent = parseEventLine(engineId, safeLine);
+    const providerError = isOpenCode ? openCodeDiagnostics.observeEvent(parsedEvent.data) : "";
+    if (providerError) emitAgentEvent(event.sender, runId, { type: "error", code: "PROVIDER_ERROR", engineId, model, message: providerError });
+    emitAgentEvent(event.sender, runId, { type: "output", stream, event: parsedEvent });
+  };
+
   const drain = (chunk, stream) => {
+    if (isOpenCode && stream === "stderr") openCodeDiagnostics.appendStderr(chunk.toString("utf8"));
     outputBytes += chunk.length;
     if (outputBytes > 20 * 1024 * 1024) {
       emitFatal("OUTPUT_LIMIT", "Ajan çıktısı 20 MB güvenlik sınırını aştı.");
@@ -3001,6 +2941,7 @@ ipcMain.handle("agent:start", async (event, payload) => {
       if (debugStream) console.debug(`[agent:${runId}:${stream}]`, safeLine);
       if (stream === "stderr" && isOpenCode) {
         const parsed = parseOpenCodeLogLine(safeLine);
+        openCodeDiagnostics.observeLog(parsed);
         if (parsed?.kind === "overloaded") {
           sawOverload = true;
           streamErrorCount += 1;
@@ -3015,7 +2956,7 @@ ipcMain.handle("agent:start", async (event, payload) => {
         }
         continue;
       }
-      emitAgentEvent(event.sender, runId, { type: "output", stream, event: parseEventLine(engineId, safeLine) });
+      emitOutputLine(stream, safeLine);
     }
   };
   child.stdout.on("data", (chunk) => drain(chunk, "stdout"));
@@ -3025,12 +2966,12 @@ ipcMain.handle("agent:start", async (event, payload) => {
     stopResourceGuard();
     clearTimeout(waitingTimer);
     if (hardTimer) clearInterval(hardTimer);
-    if (stdoutBuffer.trim()) emitAgentEvent(event.sender, runId, { type: "output", stream: "stdout", event: parseEventLine(engineId, redactSensitive(stdoutBuffer, runtimeSecrets)) });
+    if (stdoutBuffer.trim()) emitOutputLine("stdout", redactSensitive(stdoutBuffer, runtimeSecrets));
     if (stderrBuffer.trim() && !isOpenCode) emitAgentEvent(event.sender, runId, { type: "output", stream: "stderr", event: parseEventLine(engineId, redactSensitive(stderrBuffer, runtimeSecrets)) });
     if (!fatalEmitted && code && code !== 0) {
-      const errTail = redactSensitive(stderrBuffer, runtimeSecrets).trim().slice(-600);
+      const errTail = redactSensitive(isOpenCode ? openCodeDiagnostics.detail() : stderrBuffer, runtimeSecrets).trim().slice(-2000);
       const geminiHint = engineId === "gemini" ? geminiExitHint(code, errTail) : "";
-      let hint = geminiHint;
+      let hint = geminiHint || (isOpenCode ? errTail || `OpenCode başarısız oldu (çıkış kodu ${code}); hata ayrıntısı dönmedi.` : "");
       if (!hint) {
         if (sawOverload) {
           hint = "NVIDIA sağlayıcısı yoğun (529). Anahtar sorunu değil; sonra tekrar dene.";
@@ -3052,7 +2993,7 @@ ipcMain.handle("agent:start", async (event, payload) => {
         }
       }
       // Gemini always maps known exit codes; other engines only when no model text arrived.
-      if (hint && (engineId === "gemini" || !receivedOutput || (sawImagePayload && code))) {
+      if (hint && (isOpenCode || engineId === "gemini" || !receivedOutput || (sawImagePayload && code))) {
         emitAgentEvent(event.sender, runId, {
           type: "error",
           code: code === 41 ? "AUTH_FAILED" : sawOverload ? "PROVIDER_OVERLOADED" : "AGENT_EXIT",

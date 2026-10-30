@@ -14,12 +14,16 @@ test("ask mode gates every Codex write and command behind read-only approvals", 
   });
 });
 
-test("auto edit permits workspace changes while preserving boundary approvals", () => {
+test("auto edit routes boundary approvals to automatic review while preserving the workspace sandbox", () => {
   assert.deepEqual(codexPermissionConfig("auto_edit"), {
     approvalPolicy: "on-request",
-    approvalsReviewer: "user",
+    approvalsReviewer: "auto_review",
     sandbox: "workspace-write"
   });
+});
+
+test("unknown approval modes never enable automatic review", () => {
+  assert.deepEqual(codexPermissionConfig("unknown"), codexPermissionConfig("ask"));
 });
 
 test("plan mode cannot escalate into a mutation", () => {

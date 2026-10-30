@@ -59,8 +59,10 @@ test("release and dependency security controls are configured", () => {
     enableNodeCliInspectArguments: false,
     enableEmbeddedAsarIntegrityValidation: true,
     onlyLoadAppFromAsar: true,
-    loadBrowserProcessSpecificV8Snapshot: true,
-    grantFileProtocolExtraPrivileges: false
+    // Standard Electron releases do not ship browser_v8_context_snapshot.bin.
+    loadBrowserProcessSpecificV8Snapshot: false,
+    // The shell uses loadFile to serve its renderer from app.asar.
+    grantFileProtocolExtraPrivileges: true
   });
   assert.match(pkg.scripts.release, /require-signing\.js/);
   assert.doesNotMatch(main, /irm\s+[^\r\n]*\|\s*iex/i);

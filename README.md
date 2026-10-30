@@ -55,6 +55,7 @@ It is local-first: agent processes run on your computer and use the accounts or 
 - Run supported agents inside a selected project and stop active processes
 - Stream structured provider events into a desktop conversation
 - Select multiple models from the same provider in blind, isolated Multi-AI comparisons
+- Follow each comparison model's live status and output; candidates run sequentially under the selected project's `.taxcli/comparisons` directory, and reviewed changes apply to the original project
 - Inspect per-file and per-hunk changes, accept reviews, reject changes, apply isolated solutions, and restore a run with conflict checks and safety snapshots
 - Compare solutions in Model Arena with automatic project tests, a separate anonymous judge, and measured speed, reported cost, test and quality scores
 - Inspect durable run timelines and replay runs with their recorded provider, model, effort and context settings
@@ -137,6 +138,8 @@ Provider CLIs evolve independently. Please include the provider CLI version when
 4. Choose a fixed model, provider-local Auto, or **All AI engines**. Auto runs follow the Economy, Balanced, or Quality policy.
 5. TaxCLI applies the selected specialist behavior and displays the actual engine, model, and reasoning effort chosen for the run.
 6. The official provider CLI runs locally inside your project while TaxCLI renders its events in one interface.
+
+**Approval modes:** Auto-edit permits normal project edits and commands within the provider's workspace permissions. For Codex, eligible requests for additional access use [Auto-review](https://learn.chatgpt.com/docs/agent-approvals-security#automatic-approval-reviews), which can approve or deny a request without removing the sandbox boundary. Reviews can add to Codex usage. Changing the menu selection applies to newly started tasks; a running task keeps the permissions it started with.
 
 ## Mobile access
 

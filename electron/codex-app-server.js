@@ -4,12 +4,31 @@ const APP_VERSION = require("../package.json").version;
 
 const RPC_TIMEOUT_MS = 20000;
 
+async function requestCodexModels(request) {
+  const models = new Map();
+  const cursors = new Set();
+  let cursor;
+  do {
+    const page = await request("model/list", { limit: 100, includeHidden: false, ...(cursor ? { cursor } : {}) });
+    if (!Array.isArray(page?.data)) throw new Error("Codex geçerli bir model listesi döndürmedi.");
+    for (const entry of page.data) {
+      const id = String(entry?.model || entry?.id || "").trim();
+      if (!id || entry.hidden || models.has(id)) continue;
+      models.set(id, { ...entry, id, label: String(entry.displayName || id) });
+    }
+    cursor = page.nextCursor;
+    if (cursor && cursors.has(cursor)) throw new Error("Codex model listesi sayfalanamadı.");
+    if (cursor) cursors.add(cursor);
+  } while (cursor);
+  return [...models.values()];
+}
+
 function codexPermissionConfig(approvalMode) {
   if (approvalMode === "plan") {
     return { approvalPolicy: "never", approvalsReviewer: "user", sandbox: "read-only" };
   }
   if (approvalMode === "auto_edit") {
-    return { approvalPolicy: "on-request", approvalsReviewer: "user", sandbox: "workspace-write" };
+    return { approvalPolicy: "on-request", approvalsReviewer: "auto_review", sandbox: "workspace-write" };
   }
   return { approvalPolicy: "on-request", approvalsReviewer: "user", sandbox: "read-only" };
 }
@@ -74,6 +93,7 @@ async function startCodexAppServerRun(options) {
     emit,
     register
   } = options;
+  const permissions = codexPermissionConfig(approvalMode);
   const child = spawn(invocation.command, [...invocation.prefix, "app-server", "--stdio", ...providerArgs], {
     cwd: projectPath,
     shell: false,
@@ -176,6 +196,8 @@ async function startCodexAppServerRun(options) {
         type: "approval-request",
         requestId,
         approval: {
+          approvalMode: ["ask", "auto_edit", "plan"].includes(approvalMode) ? approvalMode : "ask",
+          reviewer: permissions.approvalsReviewer,
           kind: method.includes("commandExecution") ? "command" : "file-change",
           title: method.includes("commandExecution") ? "Terminal komutu için onay" : "Dosya değişikliği için onay",
           command: params.command || item.command || "",
@@ -229,10 +251,15 @@ async function startCodexAppServerRun(options) {
   try {
     await request("initialize", {
       clientInfo: { name: "taxcli", title: "TaxCLI", version: APP_VERSION },
-      capabilities: { experimentalApi: false, requestAttestation: false }
+      capabilities: { experimentalApi: permissions.approvalsReviewer === "auto_review", requestAttestation: false }
     });
     send({ method: "initialized", params: {} });
-    const permissions = codexPermissionConfig(approvalMode);
+    if (model) {
+      const models = await requestCodexModels(request);
+      if (!models.some((entry) => entry.id === model)) {
+        throw new Error(`'${model}' bu Codex oturumunun model listesinde yok. Model menüsünden hesabınıza açık başka bir model seçin.`);
+      }
+    }
     const threadParams = {
       cwd: projectPath,
       approvalPolicy: permissions.approvalPolicy,
@@ -259,7 +286,7 @@ async function startCodexAppServerRun(options) {
   }
 }
 
-async function readCodexAccountUsage({ invocation, env, providerArgs = [] }) {
+async function readCodexAccountData({ invocation, env, providerArgs = [] }, query) {
   const child = spawn(invocation.command, [...invocation.prefix, "app-server", "--stdio", ...providerArgs], {
     shell: false,
     windowsHide: true,
@@ -330,6 +357,7 @@ async function readCodexAccountUsage({ invocation, env, providerArgs = [] }) {
       capabilities: { experimentalApi: false, requestAttestation: false }
     });
     send({ method: "initialized", params: {} });
+    if (query === "models") return await requestCodexModels(request);
     const account = await request("account/read", { refreshToken: false }).catch(() => null);
     const rateLimits = await request("account/rateLimits/read");
     const usage = await request("account/usage/read").catch(() => null);
@@ -340,10 +368,19 @@ async function readCodexAccountUsage({ invocation, env, providerArgs = [] }) {
   }
 }
 
+async function readCodexAccountUsage(options) {
+  return readCodexAccountData(options, "usage");
+}
+
+async function readCodexModels(options) {
+  return readCodexAccountData(options, "models");
+}
+
 module.exports = {
   appServerNotificationToEvent,
   codexPermissionConfig,
   normalizeThreadItem,
   readCodexAccountUsage,
+  readCodexModels,
   startCodexAppServerRun
 };

@@ -159,9 +159,9 @@ function registerWorkbench({ ipcMain, app, dialog, safeStorage, createSnapshotMa
           return report;
         } finally { if (disposable) await fs.rm(workPath, { recursive: true, force: true }); }
       }
-      case "arena-create": return service.createArena(await trusted(projectPath), payload.prompt, payload.variants, payload.judge);
+      case "arena-create": return service.createArena(await trusted(projectPath), payload.prompt, payload.variants, payload.judge, payload.conversationId);
       case "arena-result": return service.arenaResult(payload.arenaId, payload.variantId, payload.runId, payload.tests);
-      case "arena-failure": return service.mutate((state) => { const arena = state.arenas.find((a) => a.id === payload.arenaId), variant = arena?.variants.find((v) => v.variantId === payload.variantId); if (!variant) throw new Error("Arena varyantı bulunamadı."); variant.status = "failed"; variant.error = redactSensitive(String(payload.error || "Başlatılamadı")).slice(0, 2000); });
+      case "arena-failure": return service.mutate((state) => { const arena = state.arenas.find((a) => a.id === payload.arenaId), variant = arena?.variants.find((v) => v.variantId === payload.variantId); if (!variant) throw new Error("Arena varyantı bulunamadı."); variant.status = payload.status === "cancelled" ? "cancelled" : "failed"; variant.error = redactSensitive(String(payload.error || "Başlatılamadı")).slice(0, 2000); });
       case "arena-judge-prompt": return service.judgePrompt(payload.arenaId);
       case "arena-judge-workspace": {
         const arena = (await service.read()).arenas.find((a) => a.id === payload.arenaId);

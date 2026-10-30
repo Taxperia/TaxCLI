@@ -52,12 +52,14 @@ test("multi AI supports searchable models with sequential disposable variants", 
   assert.match(prepareSource, /variantsToPrepare\.length >= MAX_COMPARISON_VARIANTS/);
   assert.match(mainSource, /const MAX_COMPARISON_VARIANTS = 64/);
   assert.match(appSource, /const MAX_MULTI_AI_VARIANTS = 64/);
-  assert.match(appSource, /id: "gpt-6", label: "GPT-6"/);
+  assert.doesNotMatch(appSource, /id: "gpt-6", label: "GPT-6"/);
+  assert.doesNotMatch(mainSource, /CODEX_MODEL_CATALOG/);
   assert.match(appSource, /id: "claude", name: "Claude Code"/);
-  assert.match(prepareSource, /String\(index \+ 1\)\.padStart\(2, "0"\)/);
+  const workspaceSource = fs.readFileSync(path.join(__dirname, "../electron/comparison-workspaces.js"), "utf8");
+  assert.match(workspaceSource, /String\(index \+ 1\)\.padStart\(2, "0"\)/);
   assert.doesNotMatch(prepareSource, /new Set\(requested\.map/);
   assert.match(prepareSource, /ipcMain\.handle\("parallel:materialize"/);
-  assert.match(prepareSource, /workbench\.unseal\(`batch-\$\{batchId\}`\)/);
+  assert.match(workspaceSource, /this\.store\(\)\.unseal\(`batch-\$\{batchId\}`\)/);
   assert.match(prepareSource, /ipcMain\.handle\("parallel:cleanup"/);
   assert.match(appSource, /await completed;/);
   assert.match(appSource, /cleanupParallelWorkspace/);

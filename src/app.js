@@ -212,6 +212,23 @@ let contextProjectBounds = null;
 let terminalId = null;
 let selectedImages = [];
 let multiAiPreparing = false;
+const comparisonProgress = window.createComparisonProgress({
+  root: document.querySelector("#comparisonProgress"),
+  project: () => $("#projectPath").value,
+  conversation: () => activeConversationId(),
+  openConversation: async (projectPath, id, variantId) => {
+    if ($("#projectPath").value !== projectPath) return;
+    await activateConversation(id);
+    showView("workspace");
+    const root = $("#conversation");
+    const output = [...root.querySelectorAll("[data-comparison-variant-id]")].find((el) => el.dataset.comparisonVariantId === variantId);
+    if (output) root.scrollTo({ top: Math.max(0, root.scrollTop + output.closest(".message").getBoundingClientRect().top - root.getBoundingClientRect().top - 12), behavior: "smooth" });
+  },
+  openResult: async (runId) => {
+    showView("workbench");
+    await window.TaxCliWorkbench.openRun(runId);
+  }
+});
 let multiAiCancelled = false;
 let multiAiCurrentRun = "";
 let collapsedProjectIds = new Set();
@@ -752,12 +769,13 @@ function renderContextChips() {
 async function setApprovalMode(next, { skipConfirm = false } = {}) {
   if (next === "auto_edit" && !skipConfirm && !(await askUserConfirmation({
     title: "Otomatik düzenleme etkinleştirilsin mi?",
-    message: "Seçili ajan proje içindeki dosyaları her değişiklikte yeniden onay istemeden düzenleyebilecek.",
-    note: "Proje dışı veya hassas işlemler mevcut güvenlik sınırlarına tabi olmaya devam eder.",
+    message: "Seçili ajan proje içindeki dosyaları düzenleyip normal proje komutlarını çalıştırabilecek. Codex ek erişim isteklerini otomatik güvenlik incelemesine yönlendirecek.",
+    note: "Riskli işlemler engellenebilir. Otomatik inceleme ek Codex kullanımı oluşturabilir. Seçim yeni başlatılan görevlere uygulanır.",
     confirmLabel: "Modu etkinleştir",
     tone: "warning",
     icon: "fa-solid fa-bolt"
   }))) return;
+  const changed = approvalMode !== next;
   approvalMode = next;
   localStorage.setItem("agenthub:approval", approvalMode);
   if (next === "plan") contextFlags.plan = true;
@@ -765,6 +783,7 @@ async function setApprovalMode(next, { skipConfirm = false } = {}) {
   updateApprovalLabel();
   renderContextChips();
   $$(".approval-option").forEach((btn) => btn.classList.toggle("selected", btn.dataset.approval === approvalMode));
+  if (changed && projectRuns.size) toast("İzin seçimi yeni görevlere uygulanır; çalışan görevlerin izinleri değişmez.");
 }
 
 const BROWSER_SITE_HINTS = [
@@ -2028,6 +2047,7 @@ function showSettingsSection(section = "general") {
 }
 
 function showView(view) {
+  comparisonProgress.sync();
   closeRunTuningMenu();
   if (view === "userSettings") toggleNotificationDrawer(false);
   $$(".view").forEach((el) => el.classList.remove("active"));
@@ -2288,6 +2308,8 @@ function hydrateStoredMessage(message) {
     engineId: String(message.engineId || ""),
     agentId: message.agentId ? agentRegistry.normalizeAgentId(message.agentId) : "",
     recordId: String(message.recordId || ""),
+    comparisonVariantId: String(message.comparisonVariantId || ""),
+    comparisonLabel: String(message.comparisonLabel || ""),
     content: normalizeStoredContent(kept.join("\n")),
     activity
   };
@@ -3169,6 +3191,19 @@ function addMessage(role, content = "", agentId = "", engineId = activeEngine) {
   return messageContent;
 }
 
+function labelComparisonOutput(content, variantId, label) {
+  if (!variantId) return;
+  content.dataset.comparisonVariantId = variantId;
+  content.dataset.comparisonLabel = label;
+  const head = content.closest(".message")?.querySelector(".message-head");
+  if (head && !head.querySelector(".comparison-model-label")) {
+    const badge = document.createElement("span");
+    badge.className = "comparison-model-label";
+    badge.textContent = label;
+    head.insertBefore(badge, head.querySelector("time"));
+  }
+}
+
 function setRunning(running, statusText = "") {
   isRunning = running;
   $("#sendButton").classList.toggle("running", running);
@@ -3363,7 +3398,7 @@ function collectMessagesFromRoot(root = $("#conversation")) {
     if (role === "assistant" && contentEl?.classList.contains("assistant-stream")) {
       const activity = serializeActivity(contentEl);
       const content = responseRawText(contentEl).trim().slice(0, 12000);
-      return { role, engineId: message.dataset.engineId || "", agentId: message.dataset.agentId || "", recordId: contentEl.dataset.recordId || "", content, activity };
+      return { role, engineId: message.dataset.engineId || "", agentId: message.dataset.agentId || "", recordId: contentEl.dataset.recordId || "", comparisonVariantId: contentEl.dataset.comparisonVariantId || "", comparisonLabel: contentEl.dataset.comparisonLabel || "", content, activity };
     }
     return {
       role,
@@ -3431,6 +3466,7 @@ function renderStoredMessage(message, into = $("#conversation")) {
   if (into === $("#conversation")) {
     const content = addMessageToRoot(into, hydrated.role, hydrated.content || "", hydrated.engineId || activeEngine, hydrated.agentId || "");
     if (hydrated.recordId) content.dataset.recordId = hydrated.recordId;
+    labelComparisonOutput(content, hydrated.comparisonVariantId, hydrated.comparisonLabel || "");
     $("#workspaceView").classList.add("has-messages");
     if (hydrated.role === "assistant" && hydrated.activity?.length) restoreActivity(content, hydrated.activity);
     return content;
@@ -3445,6 +3481,7 @@ function renderStoredMessage(message, into = $("#conversation")) {
   article.innerHTML = `<span class="message-avatar" aria-hidden="true">${renderMessageAvatar(hydrated.role, messageEngine)}</span><div class="message-body"><div class="message-head">${hydrated.role === "user" ? "Sen" : engines.find((item) => item.id === messageEngine)?.name || "Ajan"}${agentBadge}<time></time><button type="button" class="wb-fork-message">Buradan dallandır</button>${hydrated.role === "assistant" ? '<button type="button" class="wb-review-message">İncele</button>' : ""}</div><div class="message-content"></div></div>`;
   const content = article.querySelector(".message-content");
   if (hydrated.recordId) content.dataset.recordId = hydrated.recordId;
+  labelComparisonOutput(content, hydrated.comparisonVariantId, hydrated.comparisonLabel || "");
   if (hydrated.role === "assistant") {
     setRichText(ensureAssistantParts(content).response, hydrated.content || "");
     if (hydrated.activity?.length) restoreActivity(content, hydrated.activity);
@@ -3555,6 +3592,7 @@ function parkCurrentConversation() {
 }
 
 async function restoreConversation(projectPath, conversationId = activeConversationId(projectPath)) {
+  comparisonProgress.sync();
   const key = projectKey(projectPath, conversationId);
   const holder = parkedConversations.get(key);
   if (!holder) {
@@ -3655,10 +3693,8 @@ function applyAgentPayload(container, payload, isCurrent) {
     if (payload.code === "MODEL_TIMEOUT" && ["opencode", "nvidia"].includes(payload.engineId)) {
       if (payload.model) unavailableModels[payload.model] = Date.now();
       localStorage.setItem("agenthub:unavailable-models", JSON.stringify(unavailableModels));
-      if (payload.engineId === "opencode") modelByEngine.opencode = "opencode/deepseek-v4-flash-free";
-      localStorage.setItem("agenthub:models", JSON.stringify(modelByEngine));
-      if (isCurrent && activeEngine === "opencode") updateModelButton();
-      if (isCurrent) toast("Yanıtsız model 30 dakika pasifleştirildi; çalışan DeepSeek ücretsiz modele geçildi.", "error");
+      delete availableModels[payload.engineId];
+      if (isCurrent) toast("Yanıtsız model 30 dakika pasifleştirildi. Model menüsünden güncel bir model seçin.", "error");
     } else if (payload.code === "PROVIDER_OVERLOADED" && isCurrent) {
       toast("Sağlayıcı yoğun (529). Anahtar sorunu değil — biraz sonra tekrar dene.", "error");
     } else if (payload.code === "AUTH_FAILED" && isCurrent) {
@@ -3706,7 +3742,8 @@ function applyAgentPayload(container, payload, isCurrent) {
           text: replyText,
           code: payload.code,
           container,
-          stopped: payload.code == null
+          stopped: payload.code == null,
+          error: container.dataset.lastRunError || ""
         });
       } catch { /* ignore */ }
       meta.waitResolve = null;
@@ -3906,7 +3943,7 @@ function readyComparisonEngines() {
 }
 
 async function loadComparisonModels(engineId) {
-  if (!availableModels[engineId]?.length) {
+  if (["codex", "opencode", "nvidia"].includes(engineId) || !availableModels[engineId]?.length) {
     let live = [];
     try { live = await window.agentHub.listModels(engineId); } catch { live = []; }
     const liveModels = normalizeModelEntries(live);
@@ -3955,7 +3992,8 @@ function updateMultiAiSelectionSummary() {
     summary.classList.toggle("limit", selected.length >= MAX_MULTI_AI_VARIANTS);
   }
   $$('[data-multi-model-option]').forEach((input) => {
-    const locked = input.closest("[data-multi-engine]")?.dataset.ready !== "1";
+    const locked = input.closest("[data-multi-engine]")?.dataset.ready !== "1"
+      || input.closest(".multi-ai-model-option")?.classList.contains("locked");
     input.disabled = locked || (!input.checked && selected.length >= MAX_MULTI_AI_VARIANTS);
     input.closest(".multi-ai-model-option")?.classList.toggle("selected", input.checked);
   });
@@ -4005,14 +4043,14 @@ async function populateComparisonModelList(card, selectedKeys = new Set()) {
   const savedForEngine = multiAiSelection.filter((item) => item.engineId === engineId && item.model);
   const missingSaved = savedForEngine
     .filter((item) => !models.some((model) => model.id === item.model))
-    .map((item) => ({ id: item.model, label: item.model }));
+    .map((item) => ({ id: item.model, label: item.model, unavailable: ["codex", "opencode", "nvidia"].includes(engineId) }));
   const rows = [{ id: "", label: "Auto · sağlayıcı varsayılanı" }, ...missingSaved, ...models]
     .filter((model, index, all) => all.findIndex((item) => item.id === model.id) === index);
   host.innerHTML = rows.map((model) => {
     const key = multiAiVariantKey(engineId, model.id);
-    const checked = selectedKeys.has(key);
+    const checked = !model.unavailable && selectedKeys.has(key);
     const searchText = `${engine.name} ${model.label || model.id} ${model.id}`.toLocaleLowerCase("tr-TR");
-    return `<label class="multi-ai-model-option ${checked ? "selected" : ""}" data-multi-model-row data-search-text="${escapeHtml(searchText)}"><input type="checkbox" data-multi-model-option data-multi-model="${escapeHtml(model.id)}" ${checked ? "checked" : ""}>${renderEngineLogo(engine)}<span><strong>${escapeHtml(model.label || model.id)}</strong>${model.id ? `<small>${escapeHtml(model.id)}</small>` : ""}</span></label>`;
+    return `<label class="multi-ai-model-option ${model.unavailable ? "locked" : checked ? "selected" : ""}" data-multi-model-row data-search-text="${escapeHtml(searchText)}"><input type="checkbox" data-multi-model-option data-multi-model="${escapeHtml(model.id)}" ${checked ? "checked" : ""} ${model.unavailable ? "disabled" : ""}>${renderEngineLogo(engine)}<span><strong>${escapeHtml(model.label || model.id)}</strong>${model.id ? `<small>${escapeHtml(model.id)}</small>` : ""}${model.unavailable ? "<small>Bu oturumda kullanılamıyor; başka model seçin.</small>" : ""}</span></label>`;
   }).join("");
   $$('[data-multi-model-option]').filter((input) => input.closest("[data-multi-engine]") === card).forEach((input) => input.addEventListener("change", () => {
     updateMultiAiSelectionSummary();
@@ -4672,186 +4710,186 @@ function toggleSubagentMode(force) {
 }
 
 async function startMultiAiComparison({ prompt, outgoingImages = [] }) {
-  if (multiAiPreparing) return toast("Çoklu AI çalışma alanları zaten hazırlanıyor.", "error");
-  if (multiAiSelection.length < 2) return toast("Önce Çoklu AI modunda en az iki AI seçin.", "error");
+  if (multiAiPreparing) return toast("Bir karşılaştırma zaten çalışıyor.", "error");
+  if (multiAiSelection.length < 2) return toast("En az iki model seçin.", "error");
   if (!$("#projectPath").value) {
     await addNewProject();
     if (!$("#projectPath").value) return;
   }
+  let judge;
+  try { judge = JSON.parse(localStorage.getItem("agenthub:arena-judge") || "null"); } catch { /* Show the same actionable error. */ }
+  if (!judge?.engineId) return toast("Karşılaştırma menüsünden hakem sağlayıcı seçin.", "error");
   const projectPath = $("#projectPath").value;
-  if (!(await ensureWorkspaceTrusted(projectPath))) return toast("Çoklu AI için çalışma alanına güven verilmedi.", "error");
+  if (!(await ensureWorkspaceTrusted(projectPath))) return;
   const agentResolution = agentRegistry.resolveAgent(selectedAgentId, prompt, {
-    plan: contextFlags.plan || approvalMode === "plan",
-    hasImages: outgoingImages.length > 0
+    plan: contextFlags.plan || approvalMode === "plan", hasImages: outgoingImages.length > 0
   });
-  const requestedVariants = multiAiSelection.map((item, index) => ({
-    variantId: `variant-${index + 1}`,
-    engineId: item.engineId,
-    model: item.model || ""
-  }));
+  const requestedVariants = multiAiSelection.map((item, index) => ({ variantId: `variant-${index + 1}`, engineId: item.engineId, model: item.model || "" }));
   multiAiPreparing = true;
   multiAiCancelled = false;
   $("#stopMultiAi").hidden = false;
   $("#sendButton").disabled = true;
-  $("#runStatus").textContent = "İzole projeler hazırlanıyor…";
-  toast("İzole proje kopyaları hazırlanıyor…");
-
-  let prepared = null, arena = null;
+  closeModal("multiAiModal");
+  parkCurrentConversation();
+  const baseKey = baseProjectKey(projectPath);
+  const promptTitle = prompt.replace(/\s+/g, " ").trim().slice(0, 34) || "Görsel görevi";
+  const meta = newConversationMeta(`Karşılaştırma · ${promptTitle}`);
+  const holder = document.createElement("div");
+  holder.dataset.projectKey = projectKey(projectPath, meta.id);
+  addImagesToMessage(addMessageToRoot(holder, "user", prompt, requestedVariants[0].engineId), outgoingImages);
+  const candidates = requestedVariants.map((variant) => {
+    const engineName = engines.find((item) => item.id === variant.engineId)?.name || variant.engineId;
+    const assistant = addMessageToRoot(holder, "assistant", "", variant.engineId, agentResolution.resolvedId);
+    labelComparisonOutput(assistant, variant.variantId, variant.model || "Auto");
+    appendThoughtStep(assistant, "Sırada; diğer modelden bağımsız proje kopyası hazırlanacak.");
+    return { ...variant, engineName, meta, holder, assistant, conversationId: meta.id };
+  });
+  // One history and sidebar entry contains every candidate and the judge.
+  parkedConversations.set(projectKey(projectPath, meta.id), holder);
+  conversationsByProject.set(baseKey, [meta, ...(conversationsByProject.get(baseKey) || [])]);
+  persistConversationState(projectPath);
+  comparisonProgress.start(projectPath, [...candidates, { variantId: "judge", engineId: judge.engineId, engineName: `Hakem · ${judge.engineId}`, model: judge.model || "" }], meta.id);
+  showView("workspace");
+  activeConversationByProject.set(baseKey, candidates[0].meta.id);
+  await restoreConversation(projectPath, candidates[0].meta.id);
+  renderConversations();
+  $("#prompt").value = "";
+  selectedImages = [];
+  renderAttachmentTray();
+  let prepared = null, arena = null, completedCount = 0, eligibleCount = 0;
+  const cleaned = new Set();
   try {
     prepared = await window.agentHub.prepareParallelWorkspaces({ projectPath, variants: requestedVariants });
-    const judge = JSON.parse(localStorage.getItem("agenthub:arena-judge") || "null");
-    if (!judge?.engineId) throw new Error("Karşılaştırma menüsünden hakem sağlayıcı seç.");
-    arena = await window.agentHub.workbenchRequest("arena-create", { projectPath, prompt, variants: prepared.variants.map(({ projectPath: workingPath, ...variant }) => variant), judge });
-    closeModal("multiAiModal");
-    parkCurrentConversation();
-    const baseKey = baseProjectKey(projectPath);
-    const created = [];
-    let startedCount = 0;
-    const promptTitle = prompt.replace(/\s+/g, " ").trim().slice(0, 34) || "Görsel görevi";
-
-    for (const [variantIndex, variant] of prepared.variants.entries()) {
-      if (multiAiCancelled) break;
-      const engine = engines.find((item) => item.id === variant.engineId);
-      const selectedModel = variant.model || "";
-      const modelLabel = selectedModel || "Auto";
-      const meta = newConversationMeta(`${engine?.name || variant.engineId} · ${modelLabel} · ${promptTitle}`);
-      meta.engineId = variant.engineId;
-      meta.model = selectedModel;
-      meta.variantPath = variant.projectPath;
-      created.push(meta);
-      const holder = document.createElement("div");
-      holder.dataset.projectKey = projectKey(projectPath, meta.id);
-      const userMessage = addMessageToRoot(holder, "user", prompt, variant.engineId);
-      addImagesToMessage(userMessage, outgoingImages);
-      const assistant = addMessageToRoot(holder, "assistant", "", variant.engineId, agentResolution.resolvedId);
-      appendThoughtStep(assistant, `${agentResolution.profile.name} · ${selectedModel || "Varsayılan model"} · Kör koşu ${variantIndex + 1}/${prepared.variants.length}`);
-      parkedConversations.set(projectKey(projectPath, meta.id), holder);
-
-      const runId = crypto.randomUUID();
+    arena = await window.agentHub.workbenchRequest("arena-create", { projectPath, conversationId: meta.id, prompt, variants: prepared.variants.map(({ projectPath: workingPath, ...v }) => v), judge });
+    for (const [index, variant] of prepared.variants.entries()) {
+      const candidate = candidates.find((c) => c.variantId === variant.variantId);
+      if (!candidate) throw new Error("Model çalışma alanı eşleşmedi.");
+      const { meta, assistant } = candidate;
+      if (multiAiCancelled) {
+        comparisonProgress.update(variant.variantId, { status: "cancelled", message: "Başlatılmadan durduruldu." });
+        setRichText(ensureAssistantParts(assistant).response, "Başlatılmadan durduruldu.");
+        finishThinking(assistant, "Durduruldu");
+        await window.agentHub.workbenchRequest("arena-failure", { arenaId: arena.id, variantId: variant.variantId, status: "cancelled", error: "Başlatılmadan durduruldu." });
+        candidate.settled = true;
+        continue;
+      }
+      let runId = crypto.randomUUID();
+      const key = projectKey(projectPath, meta.id);
       try {
+        comparisonProgress.phase(`Model ${index + 1}/${prepared.variants.length} · ${candidate.engineName}`);
+        comparisonProgress.update(variant.variantId, { status: "preparing", workingPath: variant.projectPath, message: "Aynı başlangıç dosyalarından proje kopyası hazırlanıyor." });
+        meta.variantPath = variant.projectPath;
         await window.agentHub.materializeParallelWorkspace({ batchId: prepared.batchId, variantId: variant.variantId });
+        if (multiAiCancelled) throw new Error("Karşılaştırma durduruldu.");
         assistant.dataset.runId = runId;
         assistant.dataset.recordId = runId;
         multiAiCurrentRun = runId;
-        projectRuns.set(projectKey(projectPath, meta.id), runId);
-        const completed = new Promise((resolve) => {
-          runMeta.set(runId, {
-            projectPath,
-            workingPath: variant.projectPath,
-            conversationId: meta.id,
-            engineId: variant.engineId,
-            model: selectedModel || "auto",
-            agentId: agentResolution.resolvedId,
-            startedAt: new Date().toISOString(),
-            status: `Kör karşılaştırma ${variantIndex + 1}/${prepared.variants.length}…`,
-            promptForStats: prompt,
-            waitResolve: resolve
-          });
-        });
-        $("#runStatus").textContent = `Karşılaştırma ${variantIndex + 1}/${prepared.variants.length} · ${engine?.name || variant.engineId}`;
+        projectRuns.set(key, runId);
+        comparisonProgress.update(variant.variantId, { status: "running", runId, message: "Sağlayıcı başlatılıyor; ilk çıktı bekleniyor…" });
+        const completed = new Promise((resolve) => runMeta.set(runId, {
+          projectPath, workingPath: variant.projectPath, conversationId: meta.id,
+          engineId: variant.engineId, model: variant.model || "auto", agentId: agentResolution.resolvedId,
+          startedAt: new Date().toISOString(), status: "Karşılaştırma çalışıyor…", promptForStats: prompt, waitResolve: resolve
+        }));
+        if (projectKey() === key) { activeRun = runId; activeAssistant = assistant; setRunning(true); }
         const result = await window.agentHub.startAgent({
-          runId,
-          conversationId: meta.id,
-          arenaId: arena.id,
-          variantId: variant.variantId,
-          engineId: variant.engineId,
-          agentId: agentResolution.requestedId,
-          routingPrompt: prompt,
-          prompt,
-          history: [],
-          images: outgoingImages.map((image) => image.path),
-          projectPath: variant.projectPath,
-          model: selectedModel,
-          approvalMode,
-          effort: selectedEffortFor(selectedModel, variant.engineId, agentResolution.resolvedId),
-          routingPolicy,
-          experimentalEffort: Boolean(userSettings.experimentalEffort),
-          autoSnapshot: Boolean(userSettings.autoSnapshot),
-          useWorktrees: false,
-          worktreeBase: userSettings.worktreeBase || "main",
-          browserSession: false,
-          browserUrl: "",
-          rules: userSettings.rulesText || "",
-          skillsPaths: userSettings.skillsPaths || "",
-          allowShell: userSettings.allowShell !== false,
-          allowMcp: Boolean(userSettings.allowMcp),
-          mcpConfig: userSettings.mcpConfig || "",
-          useMemory: userSettings.useMemory !== false,
-          indexIgnore: userSettings.indexIgnore !== false,
-          debugStream: Boolean(userSettings.debugStream),
-          comparisonMode: true
+          runId, conversationId: meta.id, arenaId: arena.id, variantId: variant.variantId,
+          engineId: variant.engineId, agentId: agentResolution.requestedId, routingPrompt: prompt, prompt,
+          history: [], images: outgoingImages.map((image) => image.path), projectPath: variant.projectPath,
+          model: variant.model, approvalMode,
+          effort: selectedEffortFor(variant.model, variant.engineId, agentResolution.resolvedId), routingPolicy,
+          experimentalEffort: Boolean(userSettings.experimentalEffort), autoSnapshot: Boolean(userSettings.autoSnapshot),
+          useWorktrees: false, worktreeBase: userSettings.worktreeBase || "main", browserSession: false, browserUrl: "",
+          rules: userSettings.rulesText || "", skillsPaths: userSettings.skillsPaths || "",
+          allowShell: userSettings.allowShell !== false, allowMcp: Boolean(userSettings.allowMcp), mcpConfig: userSettings.mcpConfig || "",
+          useMemory: userSettings.useMemory !== false, indexIgnore: userSettings.indexIgnore !== false,
+          debugStream: Boolean(userSettings.debugStream), comparisonMode: true
         });
         if (result.runId !== runId) {
-          runMeta.set(result.runId, runMeta.get(runId));
-          runMeta.delete(runId);
-          assistant.dataset.runId = result.runId;
-          projectRuns.set(projectKey(projectPath, meta.id), result.runId);
+          const runningMeta = runMeta.get(runId);
+          if (runningMeta) { runMeta.set(result.runId, runningMeta); runMeta.delete(runId); }
+          if (activeRun === runId) activeRun = result.runId;
+          runId = result.runId;
+          assistant.dataset.runId = runId;
+          assistant.dataset.recordId = runId;
+          projectRuns.set(key, runId);
+          multiAiCurrentRun = runId;
+          comparisonProgress.update(variant.variantId, { runId });
         }
-        startedCount += 1;
+        if (multiAiCancelled) await window.agentHub.stopAgent(runId);
         const outcome = await completed;
+        multiAiCurrentRun = "";
         let tests = null;
-        if (outcome.code === 0 && !multiAiCancelled && $("#multiAiAutoTests").checked) {
-          $("#runStatus").textContent = `${variantIndex + 1}/${prepared.variants.length} · Testler çalışıyor…`;
-          tests = await window.agentHub.workbenchRequest("run-tests", { projectPath, runId: result.runId });
+        if (outcome.code === 0 && !outcome.error && !multiAiCancelled && $("#multiAiAutoTests").checked) {
+          comparisonProgress.update(variant.variantId, { status: "testing", endedAt: null, message: "Proje testleri çalışıyor…" });
+          try { tests = await window.agentHub.workbenchRequest("run-tests", { projectPath, runId }); }
+          catch (error) { tests = { checks: [{ id: "test-runner", label: "Test çalıştırma", code: -1, output: error.message }] }; }
         }
-        await window.agentHub.workbenchRequest("arena-result", { arenaId: arena.id, variantId: variant.variantId, runId: result.runId, tests });
+        const updatedArena = await window.agentHub.workbenchRequest("arena-result", { arenaId: arena.id, variantId: variant.variantId, runId, tests });
+        const recorded = updatedArena.variants?.find((v) => v.variantId === variant.variantId);
+        const success = recorded ? recorded.status === "completed" : outcome.code === 0 && !outcome.error;
+        const failedChecks = tests?.checks?.filter((c) => c.code !== 0) || [];
+        if (success) { completedCount += 1; if (!failedChecks.length) eligibleCount += 1; }
+        comparisonProgress.update(variant.variantId, {
+          status: outcome.stopped ? "cancelled" : success && !failedChecks.length ? "completed" : "failed",
+          error: outcome.error || recorded?.error || (failedChecks.length ? failedChecks.map((c) => `${c.label || c.id}: ${c.output || `çıkış kodu ${c.code}`}`).join("\n").slice(0, 1200) : ""),
+          endedAt: Date.now(), message: outcome.stopped ? "Çalışma durduruldu." : success ? "Sonuç kaydedildi; değişiklikleri inceleyip hedef projeye uygulayabilirsin." : `Ajan başarısız oldu (çıkış kodu ${outcome.code}).`
+        });
       } catch (error) {
-        runMeta.delete(runId);
-        projectRuns.delete(projectKey(projectPath, meta.id));
+        runMeta.delete(runId); projectRuns.delete(key);
         assistant.removeAttribute("data-run-id");
         setRichText(ensureAssistantParts(assistant).response, error.message);
-        finishThinking(assistant, "Başlatılamadı");
-        await window.agentHub.workbenchRequest("arena-failure", { arenaId: arena.id, variantId: variant.variantId, error: error.message }).catch(() => {});
+        finishThinking(assistant, multiAiCancelled ? "Durduruldu" : "Hata");
+        comparisonProgress.update(variant.variantId, { status: multiAiCancelled ? "cancelled" : "failed", error: error.message, endedAt: Date.now() });
+        await window.agentHub.workbenchRequest("arena-failure", { arenaId: arena.id, variantId: variant.variantId, status: multiAiCancelled ? "cancelled" : "failed", error: error.message }).catch(() => {});
       } finally {
-        await window.agentHub.cleanupParallelWorkspace({ batchId: prepared.batchId, variantId: variant.variantId }).catch(() => {});
+        multiAiCurrentRun = "";
+        const cleanup = await window.agentHub.cleanupParallelWorkspace({ batchId: prepared.batchId, variantId: variant.variantId }).catch((error) => ({ warning: error.message }));
+        if (cleanup?.warning) comparisonProgress.update(variant.variantId, { warning: cleanup.warning });
+        cleaned.add(variant.variantId);
+        candidate.settled = true;
         meta.variantPath = "";
+        saveHistory(parkedConversations.get(key) || (projectKey() === key ? $("#conversation") : candidate.holder), projectPath, meta.id);
+        if (activeRun === runId) { activeRun = null; activeAssistant = null; setRunning(false); }
       }
     }
-
-    await window.agentHub.workbenchRequest("arena-finish", { arenaId: arena.id, error: multiAiCancelled ? "Karşılaştırma kullanıcı tarafından durduruldu." : "" });
-    if (!multiAiCancelled && startedCount) {
-      $("#runStatus").textContent = "Bağımsız hakem çözümleri değerlendiriyor…";
-      try { await window.TaxCliWorkbench.judgeArena(arena.id); }
-      catch (error) { await window.agentHub.workbenchRequest("arena-finish", { arenaId: arena.id, error: error.message }); toast(`Hakem: ${error.message}`, "error"); }
-    }
-
-    conversationsByProject.set(baseKey, [...created, ...(conversationsByProject.get(baseKey) || [])]);
-    [...created].reverse().forEach((meta) => {
-      const holder = parkedConversations.get(projectKey(projectPath, meta.id));
-      if (holder) saveHistory(holder, projectPath, meta.id);
-    });
-    if (!created.length) throw new Error("Karşılaştırma çalıştırılmadan durduruldu.");
-    activeConversationByProject.set(baseKey, created[0].id);
-    const stillViewingProject = $("#projectPath").value === projectPath;
-    if (stillViewingProject) {
-      $("#conversation").innerHTML = "";
-      await restoreConversation(projectPath, created[0].id);
-      selectedImages = [];
-      $("#prompt").value = "";
-      renderAttachmentTray();
-    }
-    renderConversations();
-    renderProjects();
-    toast(startedCount
-      ? `${startedCount} AI birbirinin dosyalarını görmeden sırayla tamamlandı${startedCount < created.length ? `; ${created.length - startedCount} tanesi başlatılamadı` : ""}.`
-      : "AI süreçleri başlatılamadı; hata ayrıntıları sohbetlerde.", startedCount ? "" : "error");
-    if (stillViewingProject) {
-      showView("workbench");
-      await window.TaxCliWorkbench.show("arena");
-    }
+    const arenaError = multiAiCancelled ? "Karşılaştırma durduruldu." : !eligibleCount ? "Başarılı ve testleri geçen bir çözüm yok. Model satırlarındaki hata ayrıntılarını kontrol edin." : "";
+    await window.agentHub.workbenchRequest("arena-finish", { arenaId: arena.id, error: arenaError });
+    if (!multiAiCancelled && eligibleCount) {
+      comparisonProgress.phase(`Hakem çalışıyor · ${judge.engineId} · ${judge.model || "Auto"}`);
+      try { await window.TaxCliWorkbench.judgeArena(arena.id, { conversationId: meta.id }); }
+      catch (error) {
+        comparisonProgress.update("judge", { status: multiAiCancelled ? "cancelled" : "failed", error: error.message, endedAt: Date.now() });
+        await window.agentHub.workbenchRequest("arena-finish", { arenaId: arena.id, error: error.message });
+        toast(`Hakem: ${error.message}`, "error");
+      }
+    } else comparisonProgress.update("judge", { status: "cancelled", message: arenaError });
+    comparisonProgress.phase(multiAiCancelled ? "Karşılaştırma durduruldu" : `Karşılaştırma bitti · ${completedCount}/${candidates.length} model tamamlandı`);
+    toast(multiAiCancelled ? "Karşılaştırma durduruldu; tamamlanan sonuçlar korundu." : `${completedCount}/${candidates.length} model tamamlandı. Durum ve hata ayrıntıları karşılaştırma panelinde.`, completedCount || multiAiCancelled ? "" : "error");
   } catch (error) {
-    $("#runStatus").textContent = "";
+    comparisonProgress.phase(`Karşılaştırma hatası: ${error.message}`);
+    candidates.forEach((candidate) => {
+      if (candidate.settled) return;
+      comparisonProgress.update(candidate.variantId, { status: "failed", error: error.message, endedAt: Date.now() });
+      setRichText(ensureAssistantParts(candidate.assistant).response, error.message);
+      finishThinking(candidate.assistant, "Hata");
+    });
+    comparisonProgress.update("judge", { status: "cancelled", message: "Karşılaştırma başlatılamadı." });
     toast(error.message, "error");
   } finally {
-    if (prepared) for (const variant of prepared.variants) await window.agentHub.cleanupParallelWorkspace({ batchId: prepared.batchId, variantId: variant.variantId }).catch(() => {});
-    multiAiPreparing = false;
-    multiAiCurrentRun = "";
+    if (prepared) for (const variant of prepared.variants) {
+      if (!cleaned.has(variant.variantId)) await window.agentHub.cleanupParallelWorkspace({ batchId: prepared.batchId, variantId: variant.variantId }).catch((error) => toast(`Temizlik: ${error.message}`, "error"));
+    }
+    const key = projectKey(projectPath, meta.id);
+    saveHistory(parkedConversations.get(key) || (projectKey() === key ? $("#conversation") : holder), projectPath, meta.id);
+    persistConversationState(projectPath);
+    multiAiPreparing = false; multiAiCurrentRun = "";
     $("#stopMultiAi").hidden = true;
     $("#runStatus").textContent = "";
     $("#sendButton").disabled = false;
+    renderConversations(); renderProjects();
   }
 }
-
 $("#stopMultiAi").addEventListener("click", async () => {
   multiAiCancelled = true;
   if (multiAiCurrentRun) await window.agentHub.stopAgent(multiAiCurrentRun).catch(() => {});
@@ -6064,10 +6102,26 @@ function positionToolMenu() {
   menu.style.top = `${Math.max(margin, composer.top - gap - bounds.height)}px`;
 }
 
+function positionApprovalMenu() {
+  const menu = $("#approvalMenu");
+  if (!menu.classList.contains("open")) return;
+  const trigger = $("#approvalButton").getBoundingClientRect();
+  const gap = 8, margin = 12;
+  const above = trigger.top - gap - margin;
+  const below = window.innerHeight - trigger.bottom - gap - margin;
+  const opensAbove = above >= 230 || above >= below;
+  menu.style.width = `${Math.min(310, window.innerWidth - margin * 2)}px`;
+  menu.style.maxHeight = `${Math.max(0, opensAbove ? above : below)}px`;
+  const bounds = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(margin, Math.min(trigger.left, window.innerWidth - bounds.width - margin))}px`;
+  menu.style.top = `${Math.max(margin, opensAbove ? trigger.top - gap - bounds.height : trigger.bottom + gap)}px`;
+}
+
 function syncToolMenuButton() {
   const open = $("#toolMenu").classList.contains("open");
   $("#toolMenuButton").setAttribute("aria-expanded", String(open));
   $("#toolMenuButton i").className = `fa-solid fa-${open ? "minus" : "plus"}`;
+  $("#approvalButton").setAttribute("aria-expanded", String($("#approvalMenu").classList.contains("open")));
 }
 
 function toggleMenu(id, force) {
@@ -6077,6 +6131,7 @@ function toggleMenu(id, force) {
   menu.classList.toggle("open", force ?? !menu.classList.contains("open"));
   const toolMenuOpen = $("#toolMenu").classList.contains("open");
   syncToolMenuButton();
+  if (id === "approvalMenu") positionApprovalMenu();
   if (id === "toolMenu" && toolMenuOpen) {
     $("#toolMenuSearch").value = "";
     filterToolMenu();
@@ -6231,6 +6286,12 @@ function showNextAgentApproval() {
   if (activeApprovalRequest || !approvalQueue.length) return;
   activeApprovalRequest = approvalQueue.shift();
   const approval = activeApprovalRequest.approval || {};
+  const modeLabels = { ask: "Her işlemde sor", auto_edit: "Otomatik düzenleme", plan: "Plan / yalnızca oku" };
+  const requestMode = Object.hasOwn(modeLabels, approval.approvalMode) ? approval.approvalMode : null;
+  $("#actionApprovalMode").textContent = modeLabels[requestMode] || "İşlem izni";
+  const modeNote = $("#actionApprovalModeNote");
+  modeNote.hidden = !requestMode || requestMode === approvalMode;
+  modeNote.textContent = modeNote.hidden ? "" : `Bu görev “${modeLabels[requestMode]}” modunda başlatıldı. Menüdeki yeni izin seçimi sonraki görevlere uygulanır.`;
   $("#actionApprovalTitle").textContent = approval.title || "İşlem onayı gerekiyor";
   $("#actionApprovalReason").textContent = approval.reason || "Ajan bu işlemi çalıştırmak için izninizi istiyor.";
 
@@ -6363,21 +6424,17 @@ function updateApprovalLabel() {
   const labels = { ask: "Her işlemde sor", auto_edit: "Düzenlemeleri onayla", plan: "Plan / yalnızca oku" };
   $("#approvalLabel").textContent = labels[approvalMode] || labels.ask;
   $("#approvalButton")?.classList.toggle("active-mode", approvalMode === "plan" || contextFlags.plan);
-  $$(".approval-option").forEach((btn) => btn.classList.toggle("selected", btn.dataset.approval === approvalMode));
+  $$(".approval-option").forEach((btn) => {
+    const selected = btn.dataset.approval === approvalMode;
+    btn.classList.toggle("selected", selected);
+    btn.setAttribute("aria-checked", String(selected));
+  });
 }
 
 const modelPresets = {
-  codex: [
-    { id: "gpt-6", label: "GPT-6" },
-    { id: "gpt-6-astra", label: "GPT-6 Astra" },
-    { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
-    { id: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
-    { id: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
-    { id: "gpt-5.5", label: "GPT-5.5" },
-    { id: "gpt-5.4", label: "GPT-5.4" },
-    { id: "gpt-5.4-mini", label: "GPT-5.4 Mini" }
-  ],
-  opencode: ["openai/gpt-5.6-codex", "anthropic/claude-sonnet-4.6", "google/gemini-3.1-pro"],
+  // Codex models come exclusively from the connected CLI/account's model/list.
+  codex: [],
+  opencode: [],
   cursor: ["auto"],
   copilot: [
     { id: "auto", label: "Auto · Copilot seçer" },
@@ -6473,6 +6530,7 @@ async function toggleModelDropdown() {
     return;
   }
   $("#modelList").innerHTML = '<div class="model-loading"><i class="fa-solid fa-spinner fa-spin"></i> Modeller yükleniyor…</div>';
+  if (["codex", "opencode", "nvidia"].includes(activeEngine)) delete availableModels[activeEngine];
   if (!availableModels[activeEngine]) {
     try {
       if (["codex", "opencode", "nvidia", "cursor", "copilot", "claude", "gemini"].includes(activeEngine)) {
@@ -6490,6 +6548,10 @@ async function toggleModelDropdown() {
         availableModels[activeEngine] = modelPresets[activeEngine] || [];
       }
     } catch (error) {
+      if (["codex", "opencode", "nvidia"].includes(activeEngine)) {
+        $("#modelList").innerHTML = `<div class="model-empty">${escapeHtml(error.message)}<br>Bağlantıyı kontrol edip model menüsünü yeniden açın.</div>`;
+        return;
+      }
       let cached = [];
       try {
         cached = JSON.parse(
@@ -7163,11 +7225,38 @@ $("#modelButton").addEventListener("click", (event) => { event.stopPropagation()
 $("#modelDropdown").addEventListener("click", (event) => event.stopPropagation());
 $("#modelSearch").addEventListener("input", (event) => { if (routingScope !== "all") renderModelList(event.target.value); });
 $("#approvalButton").addEventListener("click", (event) => { event.stopPropagation(); toggleMenu("approvalMenu"); });
+$("#approvalButton").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    toggleMenu("approvalMenu", false);
+    return;
+  }
+  if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
+  event.preventDefault();
+  toggleMenu("approvalMenu", true);
+  const options = $$("#approvalMenu .approval-option");
+  (options.find((button) => button.classList.contains("selected")) || options[0])?.focus();
+});
+$("#approvalMenu").addEventListener("click", (event) => event.stopPropagation());
+$("#approvalMenu").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault(); event.stopPropagation();
+    toggleMenu("approvalMenu", false);
+    $("#approvalButton").focus({ preventScroll: true });
+    return;
+  }
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const options = $$("#approvalMenu .approval-option");
+  const index = options.indexOf(document.activeElement);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+  options[next]?.focus();
+});
 $$("[data-approval]").forEach((button) => button.addEventListener("click", () => {
   setApprovalMode(button.dataset.approval);
   toggleMenu("approvalMenu", false);
 }));
 document.body.appendChild($("#toolMenu"));
+document.body.appendChild($("#approvalMenu"));
 $("#toolMenuButton").addEventListener("click", (event) => { event.stopPropagation(); toggleMenu("toolMenu"); });
 $("#toolMenu").addEventListener("click", (event) => event.stopPropagation());
 $("#toolMenuSearch").addEventListener("input", () => { filterToolMenu(); positionToolMenu(); });
@@ -7204,10 +7293,14 @@ $("#toolMenu").addEventListener("focusout", () => {
   }, 0);
 });
 window.addEventListener("resize", positionToolMenu);
-const toolMenuResizeObserver = new ResizeObserver(positionToolMenu);
+window.addEventListener("resize", positionApprovalMenu);
+const toolMenuResizeObserver = new ResizeObserver(() => { positionToolMenu(); positionApprovalMenu(); });
 toolMenuResizeObserver.observe($("#toolMenuButton").closest(".composer"));
 toolMenuResizeObserver.observe($("#toolMenuButton").closest(".workspace-main"));
-window.addEventListener("scroll", (event) => { if (!$("#toolMenu").contains(event.target)) positionToolMenu(); }, true);
+window.addEventListener("scroll", (event) => {
+  if (!$("#toolMenu").contains(event.target)) positionToolMenu();
+  if (!$("#approvalMenu").contains(event.target)) positionApprovalMenu();
+}, true);
 $("#openWorkflowTool").addEventListener("click", async () => {
   toggleMenu("toolMenu", false);
   showView("workbench");
@@ -7805,6 +7898,12 @@ window.agentHub.onMobilePrompt?.(async (payload) => {
 });
 
 window.agentHub.onAgentEvent(async (payload) => {
+  let comparisonActivity = "";
+  if (payload.type === "output") {
+    const normalized = payload.event?.kind === "json" ? summarizeStructuredEvent(payload.event.data || {}) : {};
+    comparisonActivity = normalized.error || normalized.toolDetail || normalized.tool || normalized.status || normalized.delta || normalized.response || normalized.thinkingDelta || normalized.thinking || payload.event?.text || "Çıktı alınıyor…";
+  }
+  comparisonProgress.event(payload, comparisonActivity);
   if (payload.type === "approval-resolved") { clearAgentApprovals(payload.runId, payload.requestId); return; }
   if (payload.type === "approval-request") enqueueAgentApproval(payload);
   if (payload.type === "finished") clearAgentApprovals(payload.runId);
@@ -7906,23 +8005,37 @@ async function executeWorkbenchAgent(options) {
   if (!(await ensureWorkspaceTrusted(displayPath))) throw new Error("Çalışma alanına güven verilmedi.");
   const engineId = options.engineId || activeEngine;
   const model = options.model === "__auto__" ? "" : options.model ?? (modelByEngine[engineId] === "__auto__" ? "" : modelByEngine[engineId]) ?? "";
-  const conversation = newConversationMeta(options.title || "Geliştirme görevi");
-  conversation.engineId = engineId;
   const baseKey = baseProjectKey(displayPath);
-  conversationsByProject.set(baseKey, [conversation, ...(conversationsByProject.get(baseKey) || [])]);
-  const holder = document.createElement("div");
-  (options.history || []).forEach((message) => renderStoredMessage(message, holder));
-  addMessageToRoot(holder, "user", options.prompt, engineId);
+  const existing = options.conversationId && (conversationsByProject.get(baseKey) || []).find((item) => item.id === options.conversationId);
+  if (options.conversationId && !existing) throw new Error("Karşılaştırma sohbeti bulunamadı.");
+  const conversation = existing || newConversationMeta(options.title || "Geliştirme görevi");
+  if (!existing) {
+    conversation.engineId = engineId;
+    conversationsByProject.set(baseKey, [conversation, ...(conversationsByProject.get(baseKey) || [])]);
+  }
+  const key = projectKey(displayPath, conversation.id);
+  const holder = existing
+    ? parkedConversations.get(key) || (projectKey() === key ? $("#conversation") : null)
+    : document.createElement("div");
+  if (!holder) throw new Error("Karşılaştırma çıktıları bulunamadı.");
+  if (!existing) {
+    (options.history || []).forEach((message) => renderStoredMessage(message, holder));
+    addMessageToRoot(holder, "user", options.prompt, engineId);
+  }
   const assistant = addMessageToRoot(holder, "assistant", "", engineId, options.agentId || "coder");
+  if (existing && options.role === "judge") labelComparisonOutput(assistant, "judge", `Hakem · ${model || "Auto"}`);
   const runId = crypto.randomUUID();
-  if (options.role === "judge" && multiAiPreparing) multiAiCurrentRun = runId;
+  if (options.role === "judge" && multiAiPreparing) {
+    multiAiCurrentRun = runId;
+    comparisonProgress.update("judge", { status: "running", runId, conversationId: conversation.id, message: "Çözümler bağımsız hakem tarafından değerlendiriliyor…" });
+  }
   assistant.dataset.runId = runId;
   assistant.dataset.recordId = runId;
-  parkedConversations.set(projectKey(displayPath, conversation.id), holder);
+  if (!existing) parkedConversations.set(key, holder);
   const completed = new Promise((resolve) => runMeta.set(runId, { projectPath: displayPath, conversationId: conversation.id, engineId, model: model || "auto", agentId: options.agentId || "coder", startedAt: new Date().toISOString(), status: "Çalışıyor…", promptForStats: options.prompt, mobileRequestId: options.mobileRequestId || "", waitResolve: resolve }));
   projectRuns.set(projectKey(displayPath, conversation.id), runId);
   if (!options.background) {
-    parkCurrentConversation();
+    if (!existing || projectKey() !== key) parkCurrentConversation();
     activeConversationByProject.set(baseKey, conversation.id);
     await restoreConversation(displayPath, conversation.id);
     activeRun = runId; activeAssistant = assistant;

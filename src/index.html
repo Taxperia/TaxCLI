@@ -33,10 +33,10 @@
             <i class="fa-solid fa-layer-group"></i> Çalışma alanı
           </button>
           <button class="nav-item" data-view="office">
-            <i class="fa-solid fa-building-user"></i> AI Ofisi
+            <i class="fa-solid fa-building-user"></i><span class="nav-item-label">AI Ofisi</span><span class="feature-beta-badge">Beta</span>
           </button>
           <button class="nav-item" data-view="workbench">
-            <i class="fa-solid fa-screwdriver-wrench"></i> Geliştirme merkezi
+            <i class="fa-solid fa-screwdriver-wrench"></i><span class="nav-item-label">Geliştirme merkezi</span><span class="feature-beta-badge">Beta</span>
           </button>
           <button class="nav-item" data-view="plugins">
             <i class="fa-solid fa-puzzle-piece"></i> Eklentiler
@@ -127,6 +127,7 @@
         <section class="view active" id="workspaceView">
           <div class="workspace-layout" id="workspaceLayout">
             <div class="workspace-main" id="workspaceMain">
+              <section class="comparison-progress" id="comparisonProgress" aria-label="Canlı model karşılaştırması" hidden></section>
               <div class="conversation" id="conversation"></div>
               <div class="hero" id="hero">
                 <div class="orb"><span></span></div>
@@ -183,13 +184,13 @@
                           <i class="fa-solid fa-globe" aria-hidden="true"></i><span>Tarayıcı</span><small>Çalışma alanına tarayıcı ekle</small>
                         </button>
                         <button class="tool-menu-row" id="openMultiAiTool">
-                          <i class="fa-solid fa-code-branch" aria-hidden="true"></i><span>Çoklu AI karşılaştır</span><small>Aynı görevi farklı modellerle çalıştır</small>
+                          <i class="fa-solid fa-code-branch" aria-hidden="true"></i><span>Çoklu AI karşılaştır</span><span class="feature-beta-badge">Beta</span><small>Aynı görevi farklı modellerle çalıştır</small>
                         </button>
                         <button class="tool-menu-row" id="openKnowledgeTool">
                           <i class="fa-solid fa-book" aria-hidden="true"></i><span>Bilgi belgeleri</span><small>Proje belgelerini bağlama ekle</small>
                         </button>
                         <button class="tool-menu-row" id="addSubagentsTool">
-                          <i class="fa-solid fa-people-arrows" aria-hidden="true"></i><span>Alt ajan takımı</span>
+                          <i class="fa-solid fa-people-arrows" aria-hidden="true"></i><span>Alt ajan takımı</span><span class="feature-beta-badge">Beta</span>
                           <small id="subagentsShortcut">Ctrl+Shift+A</small>
                         </button>
                         <button class="tool-menu-row" id="openTerminalTool">
@@ -204,13 +205,13 @@
                           <span class="tool-menu-key-hint"><kbd>↑↓</kbd> gezin <kbd>↵</kbd> seç <kbd>Esc</kbd> kapat</span>
                         </footer>
                       </div>
-                      <button class="mode-button" id="approvalButton">
+                      <button class="mode-button" id="approvalButton" aria-haspopup="menu" aria-controls="approvalMenu" aria-expanded="false">
                         <i class="fa-solid fa-shield-halved"></i>
                         <span id="approvalLabel">Her işlemde sor</span>
                         <i class="fa-solid fa-chevron-down"></i>
                       </button>
-                      <div class="popup-menu approval-menu" id="approvalMenu">
-                        <button data-approval="ask" class="approval-option">
+                      <div class="popup-menu approval-menu" id="approvalMenu" role="menu" aria-label="İşlem izinleri">
+                        <button data-approval="ask" class="approval-option" role="menuitemradio" aria-checked="true">
                           <i class="fa-solid fa-hand"></i
                           ><span
                             >Her işlemde sor<small
@@ -222,16 +223,18 @@
                         <button
                           data-approval="auto_edit"
                           class="approval-option"
+                          role="menuitemradio"
+                          aria-checked="false"
                         >
                           <i class="fa-solid fa-bolt"></i
                           ><span
                             >Düzenlemeleri onayla<small
-                              >Proje içi dosya düzenlemelerine otomatik izin
-                              verir</small
+                              >Proje içi düzenleme ve komutlara izin verir;
+                              Codex ek erişim isteklerini otomatik inceler</small
                             ></span
                           >
                         </button>
-                        <button data-approval="plan" class="approval-option">
+                        <button data-approval="plan" class="approval-option" role="menuitemradio" aria-checked="false">
                           <i class="fa-regular fa-eye"></i
                           ><span
                             >Plan / yalnızca oku<small
@@ -1552,14 +1555,15 @@
         </div>
       </div>
     </div>
-    <div class="modal-backdrop approval-backdrop" id="actionApprovalModal" role="dialog" aria-modal="true" aria-labelledby="actionApprovalTitle">
+    <div class="modal-backdrop approval-backdrop" id="actionApprovalModal" role="dialog" aria-modal="true" aria-labelledby="actionApprovalTitle" aria-describedby="actionApprovalReason">
       <div class="modal action-approval-modal">
         <div class="approval-modal-icon"><i class="fa-solid fa-shield-halved"></i></div>
         <div class="approval-modal-heading">
-          <span>Her işlemde sor</span>
+          <span id="actionApprovalMode">Her işlemde sor</span>
           <h3 id="actionApprovalTitle">İşlem onayı gerekiyor</h3>
         </div>
         <p class="modal-copy" id="actionApprovalReason">Ajan bu işlemi çalıştırmak için izninizi istiyor.</p>
+        <p class="approval-mode-note" id="actionApprovalModeNote" hidden></p>
         <div class="approval-detail" id="actionApprovalCommand" hidden>
           <strong>Çalıştırılacak komut</strong>
           <pre id="actionApprovalCommandText"></pre>
@@ -1583,6 +1587,7 @@
     <script src="usage-analytics.js"></script>
     <script src="mcp-marketplace.js"></script>
     <script src="workbench.js"></script>
+    <script src="comparison-progress.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

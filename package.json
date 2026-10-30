@@ -33,7 +33,7 @@
   "scripts": {
     "start": "node scripts/start.js",
     "dev": "node scripts/start.js",
-    "check": "node --check electron/main.js && node --check electron/app-updates.js && node --check electron/preload.js && node --check electron/mobile-bridge.js && node --check electron/mobile-client.js && node --check electron/chatgpt-accounts.js && node --check electron/provider-usage.js && node --check electron/provider-environment.js && node --check electron/cloudflare.js && node --check electron/security-center.js && node --check electron/workspace-services.js && node --check electron/change-review.js && node --check electron/workbench.js && node --check electron/workbench-ipc.js && node --check electron/task-queue.js && node --check electron/mcp-integration.js && node --check electron/process-guard.js && node --check src/agent-profiles.js && node --check src/office-mode.js && node --check src/model-router.js && node --check src/usage-analytics.js && node --check src/mcp-marketplace.js && node --check src/workbench.js && node --check src/app.js && node --check scripts/start.js && node --check scripts/require-signing.js",
+    "check": "node --check electron/main.js && node --check electron/app-updates.js && node --check electron/preload.js && node --check electron/mobile-bridge.js && node --check electron/mobile-client.js && node --check electron/chatgpt-accounts.js && node --check electron/provider-usage.js && node --check electron/provider-environment.js && node --check electron/cloudflare.js && node --check electron/security-center.js && node --check electron/workspace-services.js && node --check electron/change-review.js && node --check electron/comparison-workspaces.js && node --check electron/workbench.js && node --check electron/workbench-ipc.js && node --check electron/task-queue.js && node --check electron/mcp-integration.js && node --check electron/process-guard.js && node --check src/agent-profiles.js && node --check src/office-mode.js && node --check src/model-router.js && node --check src/usage-analytics.js && node --check src/mcp-marketplace.js && node --check src/comparison-progress.js && node --check src/workbench.js && node --check src/app.js && node --check scripts/start.js && node --check scripts/require-signing.js",
     "test": "node --test tests/*.test.js",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "security:sbom": "npm sbom --sbom-format cyclonedx",
@@ -68,8 +68,8 @@
       "enableNodeCliInspectArguments": false,
       "enableEmbeddedAsarIntegrityValidation": true,
       "onlyLoadAppFromAsar": true,
-      "loadBrowserProcessSpecificV8Snapshot": true,
-      "grantFileProtocolExtraPrivileges": false
+      "loadBrowserProcessSpecificV8Snapshot": false,
+      "grantFileProtocolExtraPrivileges": true
     },
     "compression": "maximum",
     "directories": {
