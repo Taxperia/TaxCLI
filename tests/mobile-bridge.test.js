@@ -15,6 +15,8 @@ function createLocalFetch(bridge) {
         method: options.method || "GET",
         headers: options.headers || {},
         ca: cert,
+        // Validate the URL host even when the HTTP Host header is forged.
+        servername: "",
         rejectUnauthorized: true
       }, (response) => {
         const chunks = [];
