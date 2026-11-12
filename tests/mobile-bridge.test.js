@@ -6,32 +6,39 @@ const os = require("node:os");
 const path = require("node:path");
 const { MobileBridge, parseCookies, sha256 } = require("../electron/mobile-bridge");
 
-function localFetch(url, options = {}) {
-  return new Promise((resolve, reject) => {
-    const request = https.request(url, {
-      method: options.method || "GET",
-      headers: options.headers || {},
-      rejectUnauthorized: false
-    }, (response) => {
-      const chunks = [];
-      response.on("data", (chunk) => chunks.push(chunk));
-      response.on("end", () => {
-        const body = Buffer.concat(chunks).toString("utf8");
-        resolve({
-          status: response.statusCode,
-          headers: { get: (name) => {
-            const value = response.headers[String(name).toLowerCase()];
-            return Array.isArray(value) ? value.join(", ") : value || null;
-          } },
-          text: async () => body,
-          json: async () => JSON.parse(body || "{}")
+function createLocalFetch(bridge) {
+  return async function localFetch(url, options = {}) {
+    // Trust only this test bridge's certificate; retain chain and hostname checks.
+    const { cert } = JSON.parse(await fs.readFile(bridge.tlsPath, "utf8"));
+    return new Promise((resolve, reject) => {
+      const request = https.request(url, {
+        method: options.method || "GET",
+        headers: options.headers || {},
+        ca: cert,
+        // Validate the URL host even when the HTTP Host header is forged.
+        servername: "",
+        rejectUnauthorized: true
+      }, (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => {
+          const body = Buffer.concat(chunks).toString("utf8");
+          resolve({
+            status: response.statusCode,
+            headers: { get: (name) => {
+              const value = response.headers[String(name).toLowerCase()];
+              return Array.isArray(value) ? value.join(", ") : value || null;
+            } },
+            text: async () => body,
+            json: async () => JSON.parse(body || "{}")
+          });
         });
       });
+      request.on("error", reject);
+      if (options.body) request.write(options.body);
+      request.end();
     });
-    request.on("error", reject);
-    if (options.body) request.write(options.body);
-    request.end();
-  });
+  };
 }
 
 test("mobile bridge helpers parse cookies and hash secrets consistently", () => {
@@ -42,6 +49,28 @@ test("mobile bridge helpers parse cookies and hash secrets consistently", () => 
   });
   assert.equal(sha256("secret"), sha256("secret"));
   assert.notEqual(sha256("secret"), sha256("other"));
+});
+
+test("mobile test clients reject certificates from another bridge", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "taxcli-mobile-tls-"));
+  const bridges = ["trusted", "untrusted"].map((name) => new MobileBridge({
+    storagePath: path.join(root, name, "sessions.json"),
+    protect: async (value) => Buffer.from(value).toString("base64"),
+    unprotect: async (value) => Buffer.from(value, "base64").toString(),
+    host: "127.0.0.1", port: 0, getAddresses: () => ["127.0.0.1"]
+  }));
+  t.after(async () => {
+    await Promise.all(bridges.map((bridge) => bridge.stop()));
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  const [trusted, untrusted] = bridges;
+  const trustedStatus = await trusted.start();
+  const untrustedStatus = await untrusted.start();
+  const localFetch = createLocalFetch(trusted);
+  assert.equal((await localFetch(trustedStatus.baseUrl + "/api/state")).status, 401);
+  await assert.rejects(localFetch(untrustedStatus.baseUrl), {
+    code: "DEPTH_ZERO_SELF_SIGNED_CERT"
+  });
 });
 
 test("mobile selections are validated per device and approvals belong to their originating session", async (t) => {
@@ -56,6 +85,7 @@ test("mobile selections are validated per device and approvals belong to their o
     onPrompt: async (payload) => prompts.push(payload),
     onApproval: async (payload) => { decisions.push(payload); return true; }
   });
+  const localFetch = createLocalFetch(bridge);
   t.after(async () => { await bridge.stop(); await fs.rm(root, { recursive: true, force: true }); });
   async function pair() {
     const pairing = await bridge.createPairing({ projectId: "one", engineId: "codex", model: "sol", approvalMode: "ask" });
@@ -128,6 +158,7 @@ test("one-use QR pairing creates an authenticated mobile session", async (t) => 
     getAddresses: () => ["127.0.0.1"],
     onPrompt: async (payload) => prompts.push(payload)
   });
+  const localFetch = createLocalFetch(bridge);
   t.after(async () => {
     await bridge.stop();
     await fs.rm(tempRoot, { recursive: true, force: true });

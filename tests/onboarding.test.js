@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..");
 const html = fs.readFileSync(path.join(root, "src", "index.html"), "utf8");
@@ -31,4 +32,31 @@ test("onboarding uses theme-aware controls with visible checked state", () => {
 
 test("onboarding cannot be dismissed accidentally from its backdrop", () => {
   assert.match(app, /\["actionApprovalModal", "onboardingModal"\]\.includes\(backdrop\.id\)/);
+});
+
+test("onboarding assigns approval values through the DOM and falls back for injected markup", () => {
+  const start = app.indexOf("function onboardingReadyEngines(");
+  const end = app.indexOf("async function saveOnboardingSecurityStep(", start);
+  assert.ok(start >= 0 && end > start);
+  const elements = new Map();
+  const context = vm.createContext({
+    $: (selector) => {
+      if (!elements.has(selector)) elements.set(selector, {});
+      return elements.get(selector);
+    },
+    $$: () => [],
+    onboardingStep: 3, projects: [], selectedProjectId: null,
+    detected: [], userSettings: {}, approvalMode: "ask"
+  });
+  vm.runInContext(app.slice(start, end), context);
+  for (const mode of ["ask", "auto_edit", "plan", '\"><img src=x onerror="alert(1)">']) {
+    context.approvalMode = mode;
+    context.renderOnboarding();
+    const expected = ["ask", "auto_edit", "plan"].includes(mode) ? mode : "ask";
+    assert.equal(elements.get("#onboardingApproval").value, expected);
+    const markup = elements.get("#onboardingContent").innerHTML;
+    assert.doesNotMatch(markup, /<input id="onboardingApproval"[^>]*\bvalue=/);
+    assert.ok(markup.includes(`data-wizard-approval="${expected}"`));
+    assert.doesNotMatch(markup, /<img|onerror=/);
+  }
 });
